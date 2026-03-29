@@ -1,0 +1,181 @@
+import type { BaseRecord } from "@refinedev/core";
+
+/**
+ * Shape is normalized from `GET /Sales`; extra fields are allowed for varying APIs.
+ */
+export type SaleRecord = BaseRecord & {
+  id?: string;
+  /** DB identifier — shown in the salesId column. */
+  saleId?: string;
+  /** Some APIs serialize PascalCase (`saleId` in C#). */
+  SaleId?: string;
+  salesId?: string;
+  /** Some APIs serialize PascalCase. */
+  SalesId?: string;
+  sales_id?: string;
+  outletId?: string;
+  createdAt?: string;
+  CreatedAt?: string;
+  date?: string;
+  soldAt?: string;
+  total?: number;
+  grandTotal?: number;
+  amount?: number;
+  Total?: number;
+  customerName?: string;
+  products?: string;
+  Products?: string;
+  productNames?: string;
+  itemsCount?: number;
+  ItemsCount?: number;
+  itemCount?: number;
+  items?: unknown[];
+  lineItems?: unknown[];
+  orderItems?: unknown[];
+  customer?: { name?: string; phone?: string; address?: string };
+};
+
+export type SalesGridRow = {
+  id: string;
+  salesId: string;
+  products: string;
+  itemsCount: number;
+  amount: number;
+  createdAt: string;
+};
+
+function pickLineItems(record: SaleRecord): unknown[] {
+  const raw = record.items ?? record.lineItems ?? record.orderItems;
+  return Array.isArray(raw) ? raw : [];
+}
+
+export function getSaleRowId(record: SaleRecord, index: number): string {
+  const id =
+    record.saleId ??
+    record.SaleId ??
+    record.id ??
+    record.salesId ??
+    record.SalesId ??
+    record.sales_id;
+  return typeof id === "string" && id ? id : `sale-${index}`;
+}
+
+/** Value for the salesId grid column: always from DB field `saleId` / `SaleId`. */
+export function getSalesIdDisplay(record: SaleRecord): string {
+  const raw = record.saleId ?? record.SaleId;
+  if (raw === undefined || raw === null) return "—";
+  const s = String(raw).trim();
+  if (!s) return "—";
+  if (s.startsWith("#")) return s;
+  return `#${s}`;
+}
+
+export function formatSaleProductsCell(record: SaleRecord): string {
+  if (typeof record.products === "string" && record.products.trim()) {
+    return record.products.trim();
+  }
+  if (typeof record.Products === "string" && record.Products.trim()) {
+    return record.Products.trim();
+  }
+  if (typeof record.productNames === "string" && record.productNames.trim()) {
+    return record.productNames.trim();
+  }
+  const raw = pickLineItems(record);
+  if (raw.length === 0) return "—";
+
+  const names: string[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const nested = o.product;
+    const fromNested =
+      nested && typeof nested === "object"
+        ? (nested as Record<string, unknown>).name
+        : undefined;
+    const n =
+      o.name ??
+      o.productName ??
+      o.title ??
+      (typeof fromNested === "string" ? fromNested : undefined);
+    if (typeof n === "string" && n.trim()) names.push(n.trim());
+  }
+  if (names.length === 0) return "—";
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2} more`;
+}
+
+export function getSaleItemsCount(record: SaleRecord): number {
+  if (
+    typeof record.itemsCount === "number" &&
+    Number.isFinite(record.itemsCount)
+  ) {
+    return Math.floor(record.itemsCount);
+  }
+  if (
+    typeof record.ItemsCount === "number" &&
+    Number.isFinite(record.ItemsCount)
+  ) {
+    return Math.floor(record.ItemsCount);
+  }
+  if (
+    typeof record.itemCount === "number" &&
+    Number.isFinite(record.itemCount)
+  ) {
+    return Math.floor(record.itemCount);
+  }
+  const raw = pickLineItems(record);
+  if (raw.length === 0) return 0;
+  let sum = 0;
+  for (const x of raw) {
+    if (!x || typeof x !== "object") {
+      sum += 1;
+      continue;
+    }
+    const q = (x as Record<string, unknown>).quantity;
+    if (typeof q === "number" && Number.isFinite(q)) {
+      sum += q;
+    } else {
+      sum += 1;
+    }
+  }
+  return Math.round(sum * 1000) / 1000;
+}
+
+export function getSaleAmountNumber(record: SaleRecord): number {
+  const t =
+    record.total ?? record.Total ?? record.grandTotal ?? record.amount;
+  if (typeof t === "number" && Number.isFinite(t)) return t;
+  return 0;
+}
+
+export function formatSaleCreatedAtLong(record: SaleRecord): string {
+  const raw = record.createdAt ?? record.CreatedAt ?? record.date ?? record.soldAt;
+  if (typeof raw !== "string" || !raw.trim()) return "—";
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleString(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+export function formatRupeeInr(value: number): string {
+  return `₹${value.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
+  return records.map((r, index) => ({
+    id: getSaleRowId(r, index),
+    salesId: getSalesIdDisplay(r),
+    products: formatSaleProductsCell(r),
+    itemsCount: getSaleItemsCount(r),
+    amount: getSaleAmountNumber(r),
+    createdAt: formatSaleCreatedAtLong(r),
+  }));
+}
