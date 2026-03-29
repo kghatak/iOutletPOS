@@ -8,7 +8,8 @@
  * Used for: `/products`, `POST /outlet-portal/auth/login`, `/sales`, `/expenses`, etc.
  */
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? "http://localhost:5020";
+  //import.meta.env.VITE_API_URL ?? "http://localhost:5020";
+  import.meta.env.VITE_API_URL ?? "https://orderapp-hbhtdqbkaxeqebcj.eastasia-01.azurewebsites.net";
 
 export const AUTH_STORAGE_KEY = "ioutlet:session";
 
