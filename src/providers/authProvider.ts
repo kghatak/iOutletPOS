@@ -172,6 +172,10 @@ async function readErrorMessage(res: Response): Promise<string> {
   return message;
 }
 
+// Dev credentials for bypassing auth when backend is unavailable
+const DEV_PHONE = "1234567890";
+const DEV_PASSWORD = "dev123";
+
 export const authProvider: AuthProvider = {
   login: async ({
     phoneNumber,
@@ -187,6 +191,26 @@ export const authProvider: AuthProvider = {
       return {
         success: false,
         error: new Error("Enter a valid 10-digit phone number and password."),
+      };
+    }
+
+    // Dev login bypass - allows testing without backend auth
+    if (phone === DEV_PHONE && pwd === DEV_PASSWORD) {
+      const devSession: Session = {
+        phoneNumber: DEV_PHONE,
+        name: "Dev User",
+        email: "dev@ioutletpos.local",
+        id: "dev-user-001",
+        outletId: "dev-outlet-001",
+        tenantId: "dev-tenant-001",
+        userId: "dev-user-001",
+        token: "dev-token-not-for-production",
+      };
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(devSession));
+      window.dispatchEvent(new Event(AUTH_UPDATED_EVENT));
+      return {
+        success: true,
+        redirectTo: "/products",
       };
     }
 
