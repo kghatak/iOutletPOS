@@ -17,6 +17,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router";
 import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
 import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
+import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import GlobalStyles from "@mui/material/GlobalStyles";
@@ -31,6 +32,7 @@ import { CartPage } from "./pages/cart/index";
 import { SalesPage } from "./pages/sales/index";
 import { ExpensePage } from "./pages/expenses/index";
 import { LoginPage } from "./pages/login/index";
+import { ReportsPage } from "./pages/reports/index";
 
 const BRAND_ICON_SRC = "/nannu-milk-icon.png";
 
@@ -94,6 +96,14 @@ function App() {
                       icon: <ReceiptLongOutlinedIcon />,
                     },
                   },
+                  {
+                    name: "reports",
+                    list: "/reports",
+                    meta: {
+                      label: "Reports",
+                      icon: <AssessmentOutlinedIcon />,
+                    },
+                  },
                 ]}
                 options={{
                   syncWithLocation: true,
@@ -154,6 +164,7 @@ function App() {
                     <Route path="/sales" element={<SalesPage />} />
                     <Route path="/cart" element={<CartPage />} />
                     <Route path="/expenses" element={<ExpensePage />} />
+                    <Route path="/reports" element={<ReportsPage />} />
                     <Route path="*" element={<ErrorComponent />} />
                   </Route>
                 </Routes>
