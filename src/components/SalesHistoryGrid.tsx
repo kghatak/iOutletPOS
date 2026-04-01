@@ -3,15 +3,20 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
+import ListItemIcon from "@mui/material/ListItemIcon";
+import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import PrintIcon from "@mui/icons-material/Print";
 import type { SalesGridRow } from "../types/sale";
 import { formatRupeeInr } from "../types/sale";
+import { printThermalInvoice } from "../utils/thermalInvoice";
 
 function escapeCsvField(s: string): string {
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {
@@ -44,8 +49,31 @@ function downloadSalesCsv(rows: SalesGridRow[]) {
   URL.revokeObjectURL(url);
 }
 
-function RowActions({ salesId }: { salesId: string }) {
+function formatDateFromCreatedAt(raw: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}-${mm}-${d.getFullYear()}`;
+}
+
+function RowActions({ row }: { row: SalesGridRow }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+
+  const handlePrint = () => {
+    setAnchor(null);
+    printThermalInvoice({
+      invoiceNo: row.salesId,
+      date: formatDateFromCreatedAt(row.createdAt),
+      customerName: row.customer?.name,
+      customerPhone: row.customer?.phone,
+      customerAddress: row.customer?.address,
+      items: row.rawItems.length > 0
+        ? row.rawItems
+        : [{ name: row.products, unitPrice: row.amount, quantity: 1, lineTotal: row.amount }],
+      total: row.amount,
+    });
+  };
 
   return (
     <>
@@ -63,13 +91,18 @@ function RowActions({ salesId }: { salesId: string }) {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
+        <MenuItem onClick={handlePrint}>
+          <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Print Invoice</ListItemText>
+        </MenuItem>
         <MenuItem
           onClick={() => {
-            void navigator.clipboard.writeText(salesId);
+            void navigator.clipboard.writeText(row.salesId);
             setAnchor(null);
           }}
         >
-          Copy salesId
+          <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Copy salesId</ListItemText>
         </MenuItem>
       </Menu>
     </>
@@ -136,7 +169,7 @@ export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps
         disableColumnMenu: true,
         align: "center",
         headerAlign: "center",
-        renderCell: (params) => <RowActions salesId={params.row.salesId} />,
+        renderCell: (params) => <RowActions row={params.row} />,
       },
     ],
     [],

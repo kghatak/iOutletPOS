@@ -28,7 +28,6 @@ import { authProvider } from "./providers/authProvider";
 import { OutletProvider } from "./context/outlet-context";
 import { CartProvider } from "./context/cart-context";
 import { ProductList } from "./pages/products/list";
-import { CartPage } from "./pages/cart/index";
 import { SalesPage } from "./pages/sales/index";
 import { ExpensePage } from "./pages/expenses/index";
 import { LoginPage } from "./pages/login/index";
@@ -149,7 +148,7 @@ function App() {
                             />
                           )}
                         >
-                          <Box sx={{ p: { xs: 2, sm: 3 } }}>
+                          <Box sx={{ p: { xs: 1, sm: 2 } }}>
                             <Outlet />
                           </Box>
                         </ThemedLayout>
@@ -162,7 +161,7 @@ function App() {
                     />
                     <Route path="/products" element={<ProductList />} />
                     <Route path="/sales" element={<SalesPage />} />
-                    <Route path="/cart" element={<CartPage />} />
+                    <Route path="/cart" element={<Navigate to="/products" replace />} />
                     <Route path="/expenses" element={<ExpensePage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route path="*" element={<ErrorComponent />} />

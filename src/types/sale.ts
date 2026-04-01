@@ -35,6 +35,13 @@ export type SaleRecord = BaseRecord & {
   customer?: { name?: string; phone?: string; address?: string };
 };
 
+export interface SaleLineItem {
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+}
+
 export type SalesGridRow = {
   id: string;
   salesId: string;
@@ -42,6 +49,9 @@ export type SalesGridRow = {
   itemsCount: number;
   amount: number;
   createdAt: string;
+  /** Raw line items preserved for invoice printing */
+  rawItems: SaleLineItem[];
+  customer?: { name?: string; phone?: string; address?: string };
 };
 
 function pickLineItems(record: SaleRecord): unknown[] {
@@ -169,6 +179,19 @@ export function formatRupeeInr(value: number): string {
   })}`;
 }
 
+function extractLineItems(record: SaleRecord): SaleLineItem[] {
+  const raw = pickLineItems(record);
+  return raw.map((x) => {
+    if (!x || typeof x !== "object") return { name: "?", unitPrice: 0, quantity: 1, lineTotal: 0 };
+    const o = x as Record<string, unknown>;
+    const name = String(o.name ?? o.productName ?? o.title ?? "?");
+    const unitPrice = Number(o.unitPrice ?? o.price ?? 0) || 0;
+    const quantity = Number(o.quantity ?? o.qty ?? 1) || 1;
+    const lineTotal = Number(o.lineTotal ?? o.total ?? o.amount ?? unitPrice * quantity) || 0;
+    return { name, unitPrice, quantity, lineTotal };
+  });
+}
+
 export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
   return records.map((r, index) => ({
     id: getSaleRowId(r, index),
@@ -177,5 +200,7 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     itemsCount: getSaleItemsCount(r),
     amount: getSaleAmountNumber(r),
     createdAt: formatSaleCreatedAtLong(r),
+    rawItems: extractLineItems(r),
+    customer: r.customer,
   }));
 }
