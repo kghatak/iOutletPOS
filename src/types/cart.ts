@@ -8,6 +8,8 @@ export type CartLine = {
   name: string;
   unitPrice: number;
   quantity: number;
+  /** Max allowed quantity (from outlet stock). Undefined means unlimited. */
+  stockCap?: number;
 };
 
 export type CartCustomer = {
@@ -55,10 +57,14 @@ export function lineSubtotal(line: CartLine): number {
 }
 
 export function productToLine(product: Product, quantity = 1): CartLine {
+  const cap = product.availableQuantity != null && product.availableQuantity > 0
+    ? product.availableQuantity
+    : undefined;
   return {
     productId: product.productId ?? product.id,
     name: product.name,
     unitPrice: product.price,
-    quantity: normalizeCartQuantity(quantity),
+    quantity: normalizeCartQuantity(cap != null ? Math.min(quantity, cap) : quantity),
+    stockCap: cap,
   };
 }

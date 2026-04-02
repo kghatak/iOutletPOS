@@ -146,7 +146,9 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
       const idx = prev.findIndex((l) => l.productId === id);
       if (idx === -1) return [...prev, productToLine(product, 1)];
       const next = [...prev];
-      next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 };
+      let newQty = next[idx].quantity + 1;
+      if (next[idx].stockCap != null) newQty = Math.min(newQty, next[idx].stockCap!);
+      next[idx] = { ...next[idx], quantity: newQty };
       return next;
     });
   }, []);
@@ -159,7 +161,9 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
       const idx = prev.findIndex((l) => l.productId === id);
       if (idx === -1) return [...prev, productToLine(product, q)];
       const next = [...prev];
-      next[idx] = { ...next[idx], quantity: next[idx].quantity + q };
+      let newQty = next[idx].quantity + q;
+      if (next[idx].stockCap != null) newQty = Math.min(newQty, next[idx].stockCap!);
+      next[idx] = { ...next[idx], quantity: newQty };
       return next;
     });
   }, []);
@@ -168,9 +172,11 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
     const q = normalizeCartQuantity(quantity);
     setLines((prev) => {
       if (q === 0) return prev.filter((l) => l.productId !== productId);
-      return prev.map((l) =>
-        l.productId === productId ? { ...l, quantity: q } : l,
-      );
+      return prev.map((l) => {
+        if (l.productId !== productId) return l;
+        const capped = l.stockCap != null ? Math.min(q, l.stockCap) : q;
+        return { ...l, quantity: capped };
+      });
     });
   }, []);
 

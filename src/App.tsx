@@ -18,6 +18,7 @@ import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
 import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
+import InventoryOutlinedIcon from "@mui/icons-material/InventoryOutlined";
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import GlobalStyles from "@mui/material/GlobalStyles";
@@ -32,6 +33,7 @@ import { SalesPage } from "./pages/sales/index";
 import { ExpensePage } from "./pages/expenses/index";
 import { LoginPage } from "./pages/login/index";
 import { ReportsPage } from "./pages/reports/index";
+import { ProductsManagementPage } from "./pages/products-management/index";
 
 const BRAND_ICON_SRC = "/nannu-milk-icon.png";
 
@@ -75,8 +77,16 @@ function App() {
                     name: "products",
                     list: "/products",
                     meta: {
-                      label: "Products",
+                      label: "POS",
                       icon: <StorefrontOutlinedIcon />,
+                    },
+                  },
+                  {
+                    name: "products-management",
+                    list: "/products-management",
+                    meta: {
+                      label: "Products Management",
+                      icon: <InventoryOutlinedIcon />,
                     },
                   },
                   {
@@ -160,6 +170,7 @@ function App() {
                       element={<Navigate to="/products" replace />}
                     />
                     <Route path="/products" element={<ProductList />} />
+                    <Route path="/products-management" element={<ProductsManagementPage />} />
                     <Route path="/sales" element={<SalesPage />} />
                     <Route path="/cart" element={<Navigate to="/products" replace />} />
                     <Route path="/expenses" element={<ExpensePage />} />

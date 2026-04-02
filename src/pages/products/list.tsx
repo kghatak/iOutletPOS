@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useList, useNotification } from "@refinedev/core";
+import { useNavigate } from "react-router";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 import Grid from "@mui/material/Grid";
@@ -21,6 +22,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import RemoveIcon from "@mui/icons-material/Remove";
 import AddIcon from "@mui/icons-material/Add";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
+import InventoryOutlinedIcon from "@mui/icons-material/InventoryOutlined";
 import type { Product } from "../../types/product";
 import {
   formatCartQuantityForInput,
@@ -37,10 +39,9 @@ function ProductCard({ product }: { product: Product }) {
   const productId = product.productId ?? product.id;
   const line = lines.find((l) => l.productId === productId);
   const inCart = Boolean(line);
-  const stockCap =
-    product.availableQuantity != null && product.availableQuantity > 0
-      ? product.availableQuantity
-      : undefined;
+  const hasStock = product.availableQuantity != null;
+  const outOfStock = hasStock && product.availableQuantity! <= 0;
+  const stockCap = hasStock && product.availableQuantity! > 0 ? product.availableQuantity : undefined;
   const [qtyStr, setQtyStr] = useState("1");
 
   useEffect(() => {
@@ -113,16 +114,22 @@ function ProductCard({ product }: { product: Product }) {
             </Typography>
           ) : null}
         </Typography>
-        {stockCap != null ? (
-          <Typography variant="caption" color="text.secondary" display="block">
-            Stock: {stockCap}
-          </Typography>
+        {hasStock ? (
+          outOfStock ? (
+            <Typography variant="caption" color="error" fontWeight={600} display="block">
+              Out of Stock
+            </Typography>
+          ) : (
+            <Typography variant="caption" color="text.secondary" display="block">
+              Stock: {product.availableQuantity}
+            </Typography>
+          )
         ) : null}
       </CardContent>
       <CardActions sx={{ px: 1.5, pb: 1.5, pt: 0, flexDirection: "column", alignItems: "stretch", gap: 0.5 }}>
         {!inCart ? (
-          <Button variant="contained" fullWidth size="small" onClick={onAddFirst}>
-            Add
+          <Button variant="contained" fullWidth size="small" onClick={onAddFirst} disabled={outOfStock}>
+            {outOfStock ? "Add" : "Add"}
           </Button>
         ) : (
           <Stack direction="row" alignItems="center" spacing={0} justifyContent="center">
@@ -156,6 +163,41 @@ function ProductCard({ product }: { product: Product }) {
       </CardActions>
     </Card>
   );
+}
+
+function EmptyProductsState({ hasSearch, allCount }: { hasSearch: boolean; allCount: number }) {
+  const navigate = useNavigate();
+
+  if (hasSearch) {
+    return (
+      <Typography color="text.secondary" sx={{ mt: 4 }}>
+        No products match your search.
+      </Typography>
+    );
+  }
+
+  if (allCount === 0) {
+    return (
+      <Box sx={{ textAlign: "center", py: 8 }}>
+        <InventoryOutlinedIcon sx={{ fontSize: 64, color: "text.disabled", mb: 2 }} />
+        <Typography variant="h6" gutterBottom>
+          No products added yet
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 3, maxWidth: 360, mx: "auto" }}>
+          Go to Products Management to select the products you want to sell, set your prices and quantities.
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<InventoryOutlinedIcon />}
+          onClick={() => navigate("/products-management")}
+        >
+          Go to Products Management
+        </Button>
+      </Box>
+    );
+  }
+
+  return null;
 }
 
 export const ProductList = () => {
@@ -279,11 +321,7 @@ export const ProductList = () => {
           ))}
         </Grid>
 
-        {products.length === 0 ? (
-          <Typography color="text.secondary" sx={{ mt: 4 }}>
-            No products match your search.
-          </Typography>
-        ) : null}
+        {products.length === 0 && <EmptyProductsState hasSearch={search.trim().length > 0} allCount={(listQuery.result?.data ?? []).length} />}
       </Box>
 
       {/* ── Desktop: inline cart sidebar ── */}

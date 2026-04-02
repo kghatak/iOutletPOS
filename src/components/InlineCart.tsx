@@ -44,6 +44,8 @@ function CartLineRow({
     setText(formatCartQuantityForInput(line.quantity));
   }, [line.quantity]);
 
+  const atMax = line.stockCap != null && line.quantity >= line.stockCap;
+
   const commit = () => {
     const n = parseQtyInputString(text);
     if (n === null) {
@@ -60,9 +62,16 @@ function CartLineRow({
   return (
     <Box sx={{ py: 1 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Typography variant="body2" fontWeight={500} sx={{ flex: 1, mr: 1 }} noWrap>
-          {line.name}
-        </Typography>
+        <Box sx={{ flex: 1, mr: 1 }}>
+          <Typography variant="body2" fontWeight={500} noWrap>
+            {line.name}
+          </Typography>
+          {line.stockCap != null && (
+            <Typography variant="caption" color={atMax ? "warning.main" : "text.secondary"}>
+              Stock: {line.stockCap}
+            </Typography>
+          )}
+        </Box>
         <IconButton size="small" onClick={() => removeLine(line.productId)} sx={{ color: "error.main" }}>
           <DeleteOutlineIcon fontSize="small" />
         </IconButton>
@@ -92,7 +101,7 @@ function CartLineRow({
             sx={{ width: 60 }}
             slotProps={{ htmlInput: { style: { textAlign: "center", padding: "4px 0" } } }}
           />
-          <IconButton size="small" onClick={() => setQuantity(line.productId, line.quantity + 1)}>
+          <IconButton size="small" disabled={atMax} onClick={() => setQuantity(line.productId, line.quantity + 1)}>
             <AddIcon fontSize="small" />
           </IconButton>
           <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
