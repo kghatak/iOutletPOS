@@ -230,24 +230,27 @@ export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps
           No recorded sales yet.
         </Typography>
       ) : (
-        <DataGrid
-          rows={rows}
-          columns={columns}
-          disableRowSelectionOnClick
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 10 } },
-            sorting: {
-              sortModel: [{ field: "createdAt", sort: "desc" }],
-            },
-          }}
-          sx={{
-            "& .MuiDataGrid-columnHeaderTitle": { fontWeight: 600 },
-            "& .MuiDataGrid-cell": { alignItems: "center", display: "flex" },
-          }}
-          autoHeight
-          disableColumnResize={false}
-        />
+        <Box sx={{ width: "100%", overflowX: "auto" }}>
+          <DataGrid
+            rows={rows}
+            columns={columns}
+            disableRowSelectionOnClick
+            pageSizeOptions={[10, 25, 50]}
+            initialState={{
+              pagination: { paginationModel: { pageSize: 10 } },
+              sorting: {
+                sortModel: [{ field: "createdAt", sort: "desc" }],
+              },
+            }}
+            sx={{
+              minWidth: 600,
+              "& .MuiDataGrid-columnHeaderTitle": { fontWeight: 600 },
+              "& .MuiDataGrid-cell": { alignItems: "center", display: "flex" },
+            }}
+            autoHeight
+            disableColumnResize={false}
+          />
+        </Box>
       )}
     </>
   );
