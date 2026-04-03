@@ -218,10 +218,10 @@ export const ProductsManagementPage = () => {
   }
 
   return (
-    <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={2}>
-        <Stack direction="row" alignItems="center" gap={1.5}>
-          <Typography variant="h5" component="h1">Products Management</Typography>
+    <Box sx={{ overflow: "hidden" }}>
+      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ xs: "stretch", sm: "center" }} flexWrap="wrap" gap={2} mb={2}>
+        <Stack direction="row" alignItems="center" gap={1.5} sx={{ minWidth: 0 }}>
+          <Typography variant="h5" component="h1" noWrap>Products Management</Typography>
           {selectedCount > 0 && (
             <Chip label={`${selectedCount} selected`} color="primary" size="small" />
           )}
@@ -261,8 +261,8 @@ export const ProductsManagementPage = () => {
           <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }} color="primary">
             Added Products ({selectedFiltered.length})
           </Typography>
-          <TableContainer component={Paper} variant="outlined" sx={{ mb: 3 }}>
-            <Table size="small">
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 3, overflowX: "auto" }}>
+            <Table size="small" sx={{ minWidth: 600 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: "primary.50" }}>
                   <TableCell padding="checkbox" />
@@ -333,8 +333,8 @@ export const ProductsManagementPage = () => {
         Available Products ({unselectedFiltered.length})
       </Typography>
       {unselectedFiltered.length > 0 ? (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+        <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+          <Table size="small" sx={{ minWidth: 600 }}>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox" />

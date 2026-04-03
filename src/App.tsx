@@ -143,6 +143,7 @@ function App() {
                     element={
                       <Authenticated key="main" redirectOnFail="/login">
                         <ThemedLayout
+                          initialSiderCollapsed
                           Title={({ collapsed }) => (
                             <AppTitle collapsed={collapsed} />
                           )}

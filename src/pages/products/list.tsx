@@ -31,7 +31,7 @@ import {
 import { useCart } from "../../context/cart-context";
 import { InlineCart } from "../../components/InlineCart";
 
-const CART_WIDTH = 440;
+const CART_WIDTH = 370;
 
 function ProductCard({ product }: { product: Product }) {
   const notification = useNotification();
@@ -246,12 +246,14 @@ export const ProductList = () => {
     <Box
       sx={{
         width: isDesktop ? CART_WIDTH : "100%",
+        minWidth: isDesktop ? CART_WIDTH : "auto",
+        flexShrink: 0,
         height: isDesktop ? "calc(100vh - 120px)" : "100%",
         position: isDesktop ? "sticky" : "static",
         top: isDesktop ? 80 : "auto",
         borderLeft: isDesktop ? 1 : 0,
         borderColor: "divider",
-        pl: isDesktop ? 2.5 : 0,
+        pl: isDesktop ? 2 : 0,
         px: isDesktop ? 0 : 2.5,
         py: isDesktop ? 0 : 2,
         display: "flex",
@@ -269,13 +271,14 @@ export const ProductList = () => {
   );
 
   return (
-    <Box sx={{ display: "flex", gap: 0 }}>
+    <Box sx={{ display: "flex", gap: 0, overflow: "hidden" }}>
       {/* ── Products section ── */}
       <Box
         sx={{
           flex: 1,
           minWidth: 0,
-          pr: isDesktop && showCart ? 2 : 0,
+          overflow: "hidden",
+          pr: isDesktop && showCart ? 1.5 : 0,
         }}
       >
         <Stack
@@ -312,8 +315,9 @@ export const ProductList = () => {
               item
               xs={6}
               sm={4}
-              md={isDesktop && showCart ? 4 : 3}
-              lg={isDesktop && showCart ? 3 : 2}
+              md={isDesktop && showCart ? 6 : 3}
+              lg={isDesktop && showCart ? 4 : 3}
+              xl={isDesktop && showCart ? 3 : 2}
               key={product.productId}
             >
               <ProductCard product={product} />
