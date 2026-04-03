@@ -347,7 +347,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             disabled={submitting}
             startIcon={<ShoppingCartCheckoutIcon />}
             onClick={handlePlaceOrder}
-            sx={{ py: 1.5, fontWeight: 700, fontSize: "1rem" }}
+            sx={{ py: 1.5, fontWeight: 700, fontSize: "1rem", bgcolor: "#ef6c00", "&:hover": { bgcolor: "#e65100" } }}
           >
             {submitting ? "Placing order…" : "Confirm & Place Order"}
           </Button>
