@@ -16,7 +16,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PrintIcon from "@mui/icons-material/Print";
 import type { SalesGridRow } from "../types/sale";
 import { formatRupeeInr } from "../types/sale";
-import { printThermalInvoice } from "../utils/thermalInvoice";
+import { printThermalInvoice, type ThermalPaperWidth } from "../utils/thermalInvoice";
+import type { InvoiceData } from "../types/thermalInvoice";
 
 function escapeCsvField(s: string): string {
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {
@@ -57,22 +58,30 @@ function formatDateFromCreatedAt(raw: string): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
+function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
+  return {
+    invoiceNo: row.salesId,
+    date: formatDateFromCreatedAt(row.createdAt),
+    customerName: row.customer?.name,
+    customerPhone: row.customer?.phone,
+    customerAddress: row.customer?.address,
+    items:
+      row.rawItems.length > 0
+        ? row.rawItems
+        : [{ name: row.products, unitPrice: row.amount, quantity: 1, lineTotal: row.amount }],
+    subtotal: row.subtotal,
+    discount: row.discount,
+    total: row.amount,
+    paymentMode: row.paymentMode,
+  };
+}
+
 function RowActions({ row }: { row: SalesGridRow }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
-  const handlePrint = () => {
+  const handlePrint = (paper: ThermalPaperWidth) => {
     setAnchor(null);
-    printThermalInvoice({
-      invoiceNo: row.salesId,
-      date: formatDateFromCreatedAt(row.createdAt),
-      customerName: row.customer?.name,
-      customerPhone: row.customer?.phone,
-      customerAddress: row.customer?.address,
-      items: row.rawItems.length > 0
-        ? row.rawItems
-        : [{ name: row.products, unitPrice: row.amount, quantity: 1, lineTotal: row.amount }],
-      total: row.amount,
-    });
+    void printThermalInvoice(saleRowToInvoiceData(row), { paperWidth: paper }).catch(console.error);
   };
 
   return (
@@ -91,9 +100,13 @@ function RowActions({ row }: { row: SalesGridRow }) {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <MenuItem onClick={handlePrint}>
+        <MenuItem onClick={() => handlePrint("4inch")}>
           <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Print Invoice</ListItemText>
+          <ListItemText>Print invoice (4″)</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handlePrint("3inch")}>
+          <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Print invoice (3″)</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {

@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import IconButton from "@mui/material/IconButton";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import RemoveIcon from "@mui/icons-material/Remove";
@@ -25,7 +28,11 @@ import {
 } from "../types/cart";
 import { API_BASE_URL } from "../config";
 import { getApiHeaders } from "../providers/authProvider";
-import { printThermalInvoice, type InvoiceData } from "../utils/thermalInvoice";
+import {
+  printThermalInvoice,
+  type InvoiceData,
+  type ThermalPaperWidth,
+} from "../utils/thermalInvoice";
 
 function CartLineRow({
   line,
@@ -134,21 +141,48 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   const [customerAddress, setCustomerAddress] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const [discountType, setDiscountType] = useState<"%" | "₹">("₹");
+  const [discountInput, setDiscountInput] = useState("");
+  const [paymentMode, setPaymentMode] = useState<"Cash" | "Card" | "UPI" | "">("");
+  const [cashReceived, setCashReceived] = useState("");
+
+  const discountValue = useMemo(() => {
+    const v = Number(discountInput);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    if (discountType === "%") return Math.min(v, 100) / 100 * total;
+    return Math.min(v, total);
+  }, [discountInput, discountType, total]);
+
+  const finalTotal = useMemo(() => Math.max(total - discountValue, 0), [total, discountValue]);
+
+  const cashReceivedNum = Number(cashReceived) || 0;
+  const changeToReturn = paymentMode === "Cash" && cashReceivedNum > finalTotal
+    ? cashReceivedNum - finalTotal
+    : 0;
+
   const [lastOrder, setLastOrder] = useState<InvoiceData | null>(null);
   const lastOrderRef = useRef(lastOrder);
   lastOrderRef.current = lastOrder;
 
-  const handlePrintInvoice = useCallback(() => {
-    if (lastOrderRef.current) printThermalInvoice(lastOrderRef.current);
+  const handlePrintInvoice = useCallback((paper: ThermalPaperWidth) => {
+    const d = lastOrderRef.current;
+    if (d) void printThermalInvoice(d, { paperWidth: paper }).catch(console.error);
   }, []);
 
   const handleNewOrder = useCallback(() => {
     setLastOrder(null);
   }, []);
 
+  const canPlaceOrder =
+    paymentMode === "Cash" || paymentMode === "Card" || paymentMode === "UPI";
+
   const handlePlaceOrder = async () => {
     if (lines.length === 0) {
       notification.open?.({ type: "error", message: "Cart is empty" });
+      return;
+    }
+    if (!canPlaceOrder) {
+      notification.open?.({ type: "error", message: "Select a payment mode" });
       return;
     }
 
@@ -168,7 +202,12 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         address: customerAddress.trim() || undefined,
       },
       items: invoiceItems,
-      total,
+      subtotal: total,
+      discount: discountValue > 0
+        ? { type: discountType, value: Number(discountInput) || 0, amount: discountValue }
+        : undefined,
+      total: finalTotal,
+      paymentMode: paymentMode as "Cash" | "Card" | "UPI",
     };
 
     setSubmitting(true);
@@ -191,7 +230,10 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           customerPhone: customerPhone.trim() || undefined,
           customerAddress: customerAddress.trim() || undefined,
           items: invoiceItems,
-          total,
+          subtotal: total,
+          discount: Math.round(discountValue * 100) / 100,
+          total: finalTotal,
+          paymentMode: paymentMode as "Cash" | "Card" | "UPI",
         };
 
         setLastOrder(invoiceData);
@@ -199,6 +241,8 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         setCustomerName("");
         setCustomerPhone("");
         setCustomerAddress("");
+        setDiscountInput("");
+        setCashReceived("");
         onOrderPlaced?.();
 
         notification.open?.({
@@ -241,20 +285,42 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         <Typography variant="body2" color="text.secondary">
           Invoice: {lastOrder.invoiceNo}
         </Typography>
+        {typeof lastOrder.discount === "number" && lastOrder.discount > 0 && (
+          <Typography variant="body2" color="text.secondary">
+            Discount: −₹{lastOrder.discount.toFixed(2)}
+          </Typography>
+        )}
         <Typography variant="h6" fontWeight={700}>
           ₹{lastOrder.total.toFixed(2)}
         </Typography>
+        {lastOrder.paymentMode && (
+          <Typography variant="body2" color="text.secondary">
+            Paid via {lastOrder.paymentMode}
+          </Typography>
+        )}
 
-        <Button
-          variant="contained"
-          size="large"
-          fullWidth
-          startIcon={<PrintIcon />}
-          onClick={handlePrintInvoice}
-          sx={{ mt: 2, py: 1.5, fontWeight: 700 }}
-        >
-          Print Invoice
-        </Button>
+        <Stack direction="row" spacing={1} sx={{ mt: 2, width: "100%" }}>
+          <Button
+            variant="contained"
+            size="large"
+            fullWidth
+            startIcon={<PrintIcon />}
+            onClick={() => handlePrintInvoice("4inch")}
+            sx={{ py: 1.5, fontWeight: 700 }}
+          >
+            Print 4″
+          </Button>
+          <Button
+            variant="outlined"
+            size="large"
+            fullWidth
+            startIcon={<PrintIcon />}
+            onClick={() => handlePrintInvoice("3inch")}
+            sx={{ py: 1.5, fontWeight: 700 }}
+          >
+            Print 3″
+          </Button>
+        </Stack>
         <Button
           variant="outlined"
           size="large"
@@ -290,64 +356,170 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         </Box>
       ) : (
         <>
-          <Box sx={{ flex: 1, overflow: "auto", mb: 1 }}>
-            {lines.map((line, i) => (
-              <Box key={line.productId}>
-                <CartLineRow line={line} setQuantity={setQuantity} removeLine={removeLine} />
-                {i < lines.length - 1 && <Divider />}
-              </Box>
-            ))}
-          </Box>
+          <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, mb: 1 }}>
+            <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
+              <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+                Customer (optional)
+              </Typography>
+              <Stack spacing={1}>
+                <TextField
+                  label="Name"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Phone"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="Address"
+                  value={customerAddress}
+                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  fullWidth
+                  size="small"
+                  multiline
+                  minRows={1}
+                />
+              </Stack>
+            </Paper>
+
+            {/* Cart items */}
+            <Box>
+              {lines.map((line, i) => (
+                <Box key={line.productId}>
+                  <CartLineRow line={line} setQuantity={setQuantity} removeLine={removeLine} />
+                  {i < lines.length - 1 && <Divider />}
+                </Box>
+              ))}
+            </Box>
 
           <Divider sx={{ my: 1 }} />
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
-            <Typography variant="subtitle1" fontWeight={700}>
-              Total
+          <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Typography variant="body2" color="text.secondary">
+              Subtotal
             </Typography>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography variant="body2" fontWeight={600}>
               ₹{total.toFixed(2)}
             </Typography>
           </Stack>
 
-          <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-            <Typography variant="caption" color="text.secondary" gutterBottom display="block">
-              Customer (optional)
-            </Typography>
-            <Stack spacing={1}>
-              <TextField
-                label="Name"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                fullWidth
-                size="small"
-              />
-              <TextField
-                label="Phone"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                fullWidth
-                size="small"
-              />
-              <TextField
-                label="Address"
-                value={customerAddress}
-                onChange={(e) => setCustomerAddress(e.target.value)}
-                fullWidth
-                size="small"
-                multiline
-                minRows={1}
-              />
+          {/* Discount */}
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+            <ToggleButtonGroup
+              value={discountType}
+              exclusive
+              onChange={(_, v) => { if (v) setDiscountType(v); }}
+              size="small"
+              sx={{ height: 36 }}
+            >
+              <ToggleButton value="₹" sx={{ px: 1.2, fontWeight: 700, fontSize: "0.85rem" }}>₹</ToggleButton>
+              <ToggleButton value="%" sx={{ px: 1.2, fontWeight: 700, fontSize: "0.85rem" }}>%</ToggleButton>
+            </ToggleButtonGroup>
+            <TextField
+              size="small"
+              label="Discount"
+              type="number"
+              value={discountInput}
+              onChange={(e) => setDiscountInput(e.target.value)}
+              fullWidth
+              slotProps={{ htmlInput: { min: 0, max: discountType === "%" ? 100 : total, step: "any" } }}
+            />
+          </Stack>
+          {discountValue > 0 && (
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
+              <Typography variant="body2" color="error.main">
+                Discount
+              </Typography>
+              <Typography variant="body2" color="error.main" fontWeight={600}>
+                −₹{discountValue.toFixed(2)}
+              </Typography>
             </Stack>
-          </Paper>
+          )}
+
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1, mb: 1.5 }}>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Total
+            </Typography>
+            <Typography variant="h6" fontWeight={700}>
+              ₹{finalTotal.toFixed(2)}
+            </Typography>
+          </Stack>
+
+          {/* Payment Mode */}
+          <TextField
+            select
+            required
+            label="Payment Mode"
+            value={paymentMode}
+            onChange={(e) => { setPaymentMode(e.target.value as "Cash" | "Card" | "UPI" | ""); setCashReceived(""); }}
+            fullWidth
+            size="small"
+            sx={{ mb: 1.5 }}
+            slotProps={{
+              inputLabel: { shrink: true },
+              select: {
+                displayEmpty: true,
+                renderValue: (selected) =>
+                  selected === "" ? (
+                    <Typography component="span" variant="body2" color="text.secondary">
+                      Select payment mode
+                    </Typography>
+                  ) : (
+                    String(selected)
+                  ),
+              },
+            }}
+          >
+            <MenuItem value="Cash">Cash</MenuItem>
+            <MenuItem value="Card">Card</MenuItem>
+            <MenuItem value="UPI">UPI</MenuItem>
+          </TextField>
+
+          {/* Cash received & change */}
+          {paymentMode === "Cash" && (
+            <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5, bgcolor: "grey.50" }}>
+              <TextField
+                label="Cash Received"
+                type="number"
+                value={cashReceived}
+                onChange={(e) => setCashReceived(e.target.value)}
+                fullWidth
+                size="small"
+                slotProps={{ htmlInput: { min: 0, step: "any" } }}
+              />
+              {cashReceivedNum > 0 && cashReceivedNum >= finalTotal && (
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
+                  <Typography variant="body2" fontWeight={700} color="success.main">
+                    Return to Customer
+                  </Typography>
+                  <Typography variant="h6" fontWeight={700} color="success.main">
+                    ₹{changeToReturn.toFixed(2)}
+                  </Typography>
+                </Stack>
+              )}
+              {cashReceivedNum > 0 && cashReceivedNum < finalTotal && (
+                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+                  Insufficient — ₹{(finalTotal - cashReceivedNum).toFixed(2)} more needed
+                </Typography>
+              )}
+            </Paper>
+          )}
+
+          </Box>
 
           <Button
             variant="contained"
             fullWidth
             size="large"
-            disabled={submitting}
+            disabled={submitting || !canPlaceOrder}
             startIcon={<ShoppingCartCheckoutIcon />}
             onClick={handlePlaceOrder}
-            sx={{ py: 1.5, fontWeight: 700, fontSize: "1rem", bgcolor: "#ef6c00", "&:hover": { bgcolor: "#e65100" } }}
+            sx={{ flexShrink: 0, py: 1.5, fontWeight: 700, fontSize: "1rem", bgcolor: "#ef6c00", "&:hover": { bgcolor: "#e65100" } }}
           >
             {submitting ? "Placing order…" : "Confirm & Place Order"}
           </Button>

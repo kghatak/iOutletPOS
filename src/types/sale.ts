@@ -33,6 +33,13 @@ export type SaleRecord = BaseRecord & {
   lineItems?: unknown[];
   orderItems?: unknown[];
   customer?: { name?: string; phone?: string; address?: string };
+  subtotal?: number;
+  Subtotal?: number;
+  /** Order-level discount; often `{ type, value, amount }` from API. */
+  discount?: unknown;
+  Discount?: unknown;
+  paymentMode?: string;
+  PaymentMode?: string;
 };
 
 export interface SaleLineItem {
@@ -41,6 +48,11 @@ export interface SaleLineItem {
   quantity: number;
   lineTotal: number;
 }
+
+/** Matches `InvoiceData["discount"]` for thermal print. */
+export type SaleOrderDiscount =
+  | number
+  | { amount?: number; type?: string; value?: number };
 
 export type SalesGridRow = {
   id: string;
@@ -52,6 +64,9 @@ export type SalesGridRow = {
   /** Raw line items preserved for invoice printing */
   rawItems: SaleLineItem[];
   customer?: { name?: string; phone?: string; address?: string };
+  subtotal?: number;
+  discount?: SaleOrderDiscount;
+  paymentMode?: string;
 };
 
 function pickLineItems(record: SaleRecord): unknown[] {
@@ -158,6 +173,50 @@ export function getSaleAmountNumber(record: SaleRecord): number {
   return 0;
 }
 
+export function getSaleSubtotal(record: SaleRecord): number | undefined {
+  const s = record.subtotal ?? record.Subtotal;
+  if (typeof s === "number" && Number.isFinite(s)) return s;
+  return undefined;
+}
+
+export function getSaleOrderDiscount(
+  record: SaleRecord,
+): SaleOrderDiscount | undefined {
+  const d = record.discount ?? record.Discount;
+  if (d == null) return undefined;
+  if (typeof d === "number" && Number.isFinite(d)) return Math.max(0, d);
+  if (typeof d === "object" && d !== null) {
+    const o = d as Record<string, unknown>;
+    const rawAmt = o.amount;
+    const amount =
+      typeof rawAmt === "number"
+        ? rawAmt
+        : typeof rawAmt === "string"
+          ? Number(rawAmt)
+          : NaN;
+    if (!Number.isFinite(amount)) return undefined;
+    const out: { amount: number; type?: string; value?: number } = {
+      amount: Math.max(0, amount),
+    };
+    if (typeof o.type === "string" && o.type) out.type = o.type;
+    const rawVal = o.value;
+    if (typeof rawVal === "number" && Number.isFinite(rawVal)) {
+      out.value = rawVal;
+    } else if (typeof rawVal === "string") {
+      const v = Number(rawVal);
+      if (Number.isFinite(v)) out.value = v;
+    }
+    return out;
+  }
+  return undefined;
+}
+
+export function getSalePaymentMode(record: SaleRecord): string | undefined {
+  const p = record.paymentMode ?? record.PaymentMode;
+  if (typeof p === "string" && p.trim()) return p.trim();
+  return undefined;
+}
+
 export function formatSaleCreatedAtLong(record: SaleRecord): string {
   const raw = record.createdAt ?? record.CreatedAt ?? record.date ?? record.soldAt;
   if (typeof raw !== "string" || !raw.trim()) return "—";
@@ -202,5 +261,8 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     createdAt: formatSaleCreatedAtLong(r),
     rawItems: extractLineItems(r),
     customer: r.customer,
+    subtotal: getSaleSubtotal(r),
+    discount: getSaleOrderDiscount(r),
+    paymentMode: getSalePaymentMode(r),
   }));
 }
