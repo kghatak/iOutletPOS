@@ -422,7 +422,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             </ToggleButtonGroup>
             <TextField
               size="small"
-              label="Discount"
+              label={discountType === "%" ? "Discount (%)" : "Discount (₹)"}
               type="number"
               value={discountInput}
               onChange={(e) => setDiscountInput(e.target.value)}
@@ -433,7 +433,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           {discountValue > 0 && (
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
               <Typography variant="body2" color="error.main">
-                Discount
+                {discountType === "%" ? "Discount (%)" : "Discount (₹)"}
               </Typography>
               <Typography variant="body2" color="error.main" fontWeight={600}>
                 −₹{discountValue.toFixed(2)}
