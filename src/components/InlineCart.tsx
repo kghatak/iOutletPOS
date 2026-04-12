@@ -372,9 +372,20 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                 <TextField
                   label="Phone"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(e) =>
+                    setCustomerPhone(
+                      e.target.value.replace(/\D/g, "").slice(0, 10),
+                    )
+                  }
                   fullWidth
                   size="small"
+                  slotProps={{
+                    htmlInput: {
+                      maxLength: 10,
+                      inputMode: "numeric",
+                      autoComplete: "tel",
+                    },
+                  }}
                 />
                 <TextField
                   label="Address"
