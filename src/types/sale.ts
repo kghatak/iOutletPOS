@@ -47,6 +47,7 @@ export interface SaleLineItem {
   unitPrice: number;
   quantity: number;
   lineTotal: number;
+  productId?: string;
 }
 
 /** Matches `InvoiceData["discount"]` for thermal print. */
@@ -67,6 +68,11 @@ export type SalesGridRow = {
   subtotal?: number;
   discount?: SaleOrderDiscount;
   paymentMode?: string;
+  /** Document id from API (`id` field) for PATCH /sales/:id */
+  documentId?: string;
+  outletId?: string;
+  /** Business sale id without `#` (optional body.saleId) */
+  plainSaleId?: string;
 };
 
 function pickLineItems(record: SaleRecord): unknown[] {
@@ -247,8 +253,20 @@ function extractLineItems(record: SaleRecord): SaleLineItem[] {
     const unitPrice = Number(o.unitPrice ?? o.price ?? 0) || 0;
     const quantity = Number(o.quantity ?? o.qty ?? 1) || 1;
     const lineTotal = Number(o.lineTotal ?? o.total ?? o.amount ?? unitPrice * quantity) || 0;
-    return { name, unitPrice, quantity, lineTotal };
+    const productIdRaw = o.productId ?? o.ProductId ?? o.product_id;
+    const productId =
+      productIdRaw != null && String(productIdRaw).trim()
+        ? String(productIdRaw).trim()
+        : undefined;
+    return { name, unitPrice, quantity, lineTotal, productId };
   });
+}
+
+function getPlainSaleId(record: SaleRecord): string | undefined {
+  const raw = record.saleId ?? record.SaleId;
+  if (raw === undefined || raw === null) return undefined;
+  const s = String(raw).trim();
+  return s || undefined;
 }
 
 export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
@@ -264,5 +282,12 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     subtotal: getSaleSubtotal(r),
     discount: getSaleOrderDiscount(r),
     paymentMode: getSalePaymentMode(r),
+    documentId:
+      typeof r.id === "string" && r.id.trim() ? r.id.trim() : undefined,
+    outletId:
+      typeof r.outletId === "string" && r.outletId.trim()
+        ? r.outletId.trim()
+        : undefined,
+    plainSaleId: getPlainSaleId(r),
   }));
 }

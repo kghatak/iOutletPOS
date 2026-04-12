@@ -13,11 +13,13 @@ import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
+import EditIcon from "@mui/icons-material/Edit";
 import PrintIcon from "@mui/icons-material/Print";
 import type { SalesGridRow } from "../types/sale";
 import { formatRupeeInr } from "../types/sale";
 import { printThermalInvoice, type ThermalPaperWidth } from "../utils/thermalInvoice";
 import type { InvoiceData } from "../types/thermalInvoice";
+import { EditSaleDialog } from "./EditSaleDialog";
 
 function escapeCsvField(s: string): string {
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {
@@ -76,7 +78,13 @@ function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
   };
 }
 
-function RowActions({ row }: { row: SalesGridRow }) {
+function RowActions({
+  row,
+  onEdit,
+}: {
+  row: SalesGridRow;
+  onEdit: (row: SalesGridRow) => void;
+}) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
   const handlePrint = (paper: ThermalPaperWidth) => {
@@ -100,6 +108,15 @@ function RowActions({ row }: { row: SalesGridRow }) {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onEdit(row);
+          }}
+        >
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Edit</ListItemText>
+        </MenuItem>
         <MenuItem onClick={() => handlePrint("4inch")}>
           <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Print invoice (4″)</ListItemText>
@@ -129,6 +146,8 @@ type SalesHistoryGridProps = {
 };
 
 export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps) {
+  const [editRow, setEditRow] = useState<SalesGridRow | null>(null);
+
   const columns: GridColDef<SalesGridRow>[] = useMemo(
     () => [
       {
@@ -182,7 +201,9 @@ export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps
         disableColumnMenu: true,
         align: "center",
         headerAlign: "center",
-        renderCell: (params) => <RowActions row={params.row} />,
+        renderCell: (params) => (
+          <RowActions row={params.row} onEdit={(r) => setEditRow(r)} />
+        ),
       },
     ],
     [],
@@ -236,6 +257,12 @@ export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps
 
   return (
     <>
+      <EditSaleDialog
+        open={editRow != null}
+        row={editRow}
+        onClose={() => setEditRow(null)}
+      />
+
       {header}
 
       {rows.length === 0 ? (
