@@ -62,6 +62,8 @@ export type SalesGridRow = {
   itemsCount: number;
   amount: number;
   createdAt: string;
+  /** ISO-ish timestamp from API when available (for invoice time). */
+  createdAtIso?: string;
   /** Raw line items preserved for invoice printing */
   rawItems: SaleLineItem[];
   customer?: { name?: string; phone?: string; address?: string };
@@ -269,6 +271,14 @@ function getPlainSaleId(record: SaleRecord): string | undefined {
   return s || undefined;
 }
 
+function getCreatedAtIso(record: SaleRecord): string | undefined {
+  const raw = record.createdAt ?? record.CreatedAt ?? record.date ?? record.soldAt;
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) return undefined;
+  return new Date(t).toISOString();
+}
+
 export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
   return records.map((r, index) => ({
     id: getSaleRowId(r, index),
@@ -277,6 +287,7 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     itemsCount: getSaleItemsCount(r),
     amount: getSaleAmountNumber(r),
     createdAt: formatSaleCreatedAtLong(r),
+    createdAtIso: getCreatedAtIso(r),
     rawItems: extractLineItems(r),
     customer: r.customer,
     subtotal: getSaleSubtotal(r),

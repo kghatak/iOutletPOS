@@ -17,9 +17,10 @@ import EditIcon from "@mui/icons-material/Edit";
 import PrintIcon from "@mui/icons-material/Print";
 import type { SalesGridRow } from "../types/sale";
 import { formatRupeeInr } from "../types/sale";
-import { printThermalInvoice, type ThermalPaperWidth } from "../utils/thermalInvoice";
+import { printThermalInvoice } from "../utils/thermalInvoice";
 import type { InvoiceData } from "../types/thermalInvoice";
 import { EditSaleDialog } from "./EditSaleDialog";
+import { getSessionCashierName } from "../providers/authProvider";
 
 function escapeCsvField(s: string): string {
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {
@@ -60,10 +61,29 @@ function formatDateFromCreatedAt(raw: string): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
+function gridRowInvoiceDate(row: SalesGridRow): string {
+  if (row.createdAtIso) {
+    const d = new Date(row.createdAtIso);
+    if (!Number.isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      return `${dd}-${mm}-${d.getFullYear()}`;
+    }
+  }
+  return formatDateFromCreatedAt(row.createdAt);
+}
+
+function gridRowBillTime(row: SalesGridRow): string | undefined {
+  if (!row.createdAtIso) return undefined;
+  const d = new Date(row.createdAtIso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
   return {
     invoiceNo: row.salesId,
-    date: formatDateFromCreatedAt(row.createdAt),
+    date: gridRowInvoiceDate(row),
     customerName: row.customer?.name,
     customerPhone: row.customer?.phone,
     customerAddress: row.customer?.address,
@@ -75,6 +95,9 @@ function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
     discount: row.discount,
     total: row.amount,
     paymentMode: row.paymentMode,
+    orderType: "Pick Up",
+    billTime: gridRowBillTime(row),
+    cashierName: getSessionCashierName(),
   };
 }
 
@@ -87,9 +110,9 @@ function RowActions({
 }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
-  const handlePrint = (paper: ThermalPaperWidth) => {
+  const handlePrint = () => {
     setAnchor(null);
-    void printThermalInvoice(saleRowToInvoiceData(row), { paperWidth: paper }).catch(console.error);
+    void printThermalInvoice(saleRowToInvoiceData(row)).catch(console.error);
   };
 
   return (
@@ -117,13 +140,9 @@ function RowActions({
           <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Edit</ListItemText>
         </MenuItem>
-        <MenuItem onClick={() => handlePrint("4inch")}>
+        <MenuItem onClick={() => handlePrint()}>
           <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Print invoice (4″)</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => handlePrint("3inch")}>
-          <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Print invoice (3″)</ListItemText>
+          <ListItemText>Print Invoice</ListItemText>
         </MenuItem>
         <MenuItem
           onClick={() => {

@@ -1,5 +1,5 @@
 /** Thermal roll width for PDF page size (72pt per inch). */
-export type ThermalPaperWidth = "3inch" | "4inch";
+export type ThermalPaperWidth = "3inch";
 
 export interface InvoiceItem {
   name: string;
@@ -25,6 +25,11 @@ export interface InvoiceData {
   discount?: number | { amount?: number; type?: string; value?: number };
   total: number;
   paymentMode?: string;
-  /** Default 4″ when omitted. */
   paperWidth?: ThermalPaperWidth;
+  /** 3″ retail layout: e.g. Pick Up / Delivery */
+  orderType?: string;
+  /** Shown on 3″ retail invoice (e.g. logged-in staff). */
+  cashierName?: string;
+  /** 24h time e.g. `15:24` for 3″ retail invoice. */
+  billTime?: string;
 }

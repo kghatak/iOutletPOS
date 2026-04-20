@@ -39,6 +39,17 @@ function readSession(): Session | null {
  * JSON + optional `Authorization: Bearer` + tenant header from the session in `localStorage`
  * (written at login; includes `tenantId` from `data.tenantId`).
  */
+/** Returns the `name` stored in the session — shown in the app header, used as cashier on invoices. */
+export function getSessionCashierName(): string | undefined {
+  try {
+    const session = readSession();
+    const n = session?.name?.trim();
+    return n || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function getApiHeaders(
   extra?: Record<string, string>,
 ): Record<string, string> {

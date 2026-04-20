@@ -27,11 +27,10 @@ import {
   parseQtyInputString,
 } from "../types/cart";
 import { API_BASE_URL } from "../config";
-import { getApiHeaders } from "../providers/authProvider";
+import { getApiHeaders, getSessionCashierName } from "../providers/authProvider";
 import {
   printThermalInvoice,
   type InvoiceData,
-  type ThermalPaperWidth,
 } from "../utils/thermalInvoice";
 
 function CartLineRow({
@@ -130,6 +129,12 @@ function formatInvoiceDate(): string {
   return `${dd}-${mm}-${d.getFullYear()}`;
 }
 
+function formatInvoiceBillTime(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+
 export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () => void; onNewOrder?: () => void }) {
   const queryClient = useQueryClient();
   const notification = useNotification();
@@ -164,9 +169,9 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   const lastOrderRef = useRef(lastOrder);
   lastOrderRef.current = lastOrder;
 
-  const handlePrintInvoice = useCallback((paper: ThermalPaperWidth) => {
+  const handlePrintInvoice = useCallback(() => {
     const d = lastOrderRef.current;
-    if (d) void printThermalInvoice(d, { paperWidth: paper }).catch(console.error);
+    if (d) void printThermalInvoice(d).catch(console.error);
   }, []);
 
   const handleNewOrder = useCallback(() => {
@@ -234,6 +239,9 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           discount: Math.round(discountValue * 100) / 100,
           total: finalTotal,
           paymentMode: paymentMode as "Cash" | "Card" | "UPI",
+          orderType: "Pick Up",
+          billTime: formatInvoiceBillTime(),
+          cashierName: getSessionCashierName(),
         };
 
         setLastOrder(invoiceData);
@@ -299,28 +307,16 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           </Typography>
         )}
 
-        <Stack direction="row" spacing={1} sx={{ mt: 2, width: "100%" }}>
-          <Button
-            variant="contained"
-            size="large"
-            fullWidth
-            startIcon={<PrintIcon />}
-            onClick={() => handlePrintInvoice("4inch")}
-            sx={{ py: 1.5, fontWeight: 700 }}
-          >
-            Print 4″
-          </Button>
-          <Button
-            variant="outlined"
-            size="large"
-            fullWidth
-            startIcon={<PrintIcon />}
-            onClick={() => handlePrintInvoice("3inch")}
-            sx={{ py: 1.5, fontWeight: 700 }}
-          >
-            Print 3″
-          </Button>
-        </Stack>
+        <Button
+          variant="contained"
+          size="large"
+          fullWidth
+          startIcon={<PrintIcon />}
+          onClick={() => handlePrintInvoice()}
+          sx={{ mt: 2, py: 1.5, fontWeight: 700 }}
+        >
+          Print Invoice
+        </Button>
         <Button
           variant="outlined"
           size="large"

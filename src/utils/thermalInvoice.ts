@@ -1,19 +1,15 @@
 import { createElement } from "react";
 import { pdf } from "@react-pdf/renderer";
-import type { InvoiceData, ThermalPaperWidth } from "../types/thermalInvoice";
+import type { InvoiceData } from "../types/thermalInvoice";
 import { ThermalInvoicePdfDocument } from "../pdf/ThermalInvoicePdfDocument";
 
-export type { InvoiceData, InvoiceItem, ThermalPaperWidth } from "../types/thermalInvoice";
+export type { InvoiceData, InvoiceItem } from "../types/thermalInvoice";
 
 /**
- * @react-pdf/renderer thermal invoice (3″ or 4″). Opens PDF in a new tab.
+ * @react-pdf/renderer 3″ thermal invoice. Opens PDF in a new tab.
  */
-export async function printThermalInvoice(
-  data: InvoiceData,
-  options?: { paperWidth?: ThermalPaperWidth },
-): Promise<void> {
-  const payload: InvoiceData =
-    options?.paperWidth != null ? { ...data, paperWidth: options.paperWidth } : data;
+export async function printThermalInvoice(data: InvoiceData): Promise<void> {
+  const payload: InvoiceData = { ...data, paperWidth: "3inch" };
   const blob = await pdf(
     createElement(ThermalInvoicePdfDocument, { data: payload }) as Parameters<typeof pdf>[0],
   ).toBlob();
