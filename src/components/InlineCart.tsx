@@ -16,6 +16,8 @@ import AddIcon from "@mui/icons-material/Add";
 import ShoppingCartCheckoutIcon from "@mui/icons-material/ShoppingCartCheckout";
 import PrintIcon from "@mui/icons-material/Print";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
+import WifiOffIcon from "@mui/icons-material/WifiOff";
+import Chip from "@mui/material/Chip";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys, useNotification } from "@refinedev/core";
 import { useCart } from "../context/cart-context";
@@ -32,6 +34,7 @@ import {
   printThermalInvoice,
   type InvoiceData,
 } from "../utils/thermalInvoice";
+import { enqueueOrder, removeFromQueue } from "../utils/offlineQueue";
 
 function CartLineRow({
   line,
@@ -166,6 +169,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
     : 0;
 
   const [lastOrder, setLastOrder] = useState<InvoiceData | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
   const lastOrderRef = useRef(lastOrder);
   lastOrderRef.current = lastOrder;
 
@@ -176,6 +180,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
   const handleNewOrder = useCallback(() => {
     setLastOrder(null);
+    setSavedOffline(false);
   }, []);
 
   const canPlaceOrder =
@@ -215,68 +220,71 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       paymentMode: paymentMode as "Cash" | "Card" | "UPI",
     };
 
+    const invoiceData: InvoiceData = {
+      invoiceNo: "",
+      date: formatInvoiceDate(),
+      customerName: customerName.trim() || undefined,
+      customerPhone: customerPhone.trim() || undefined,
+      customerAddress: customerAddress.trim() || undefined,
+      items: invoiceItems,
+      subtotal: total,
+      discount: Math.round(discountValue * 100) / 100,
+      total: finalTotal,
+      paymentMode: paymentMode as "Cash" | "Card" | "UPI",
+      orderType: "Pick Up",
+      billTime: formatInvoiceBillTime(),
+      cashierName: getSessionCashierName(),
+    };
+
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/sales`, {
-        method: "POST",
-        headers: getApiHeaders(),
-        body: JSON.stringify(payload),
+      // Always enqueue first — guarantees the order is never lost
+      const queued = enqueueOrder(payload as Record<string, unknown>, {
+        ...invoiceData,
+        invoiceNo: `LOCAL-${Date.now()}`,
       });
+      invoiceData.invoiceNo = queued.localId;
 
-      const body = await res.json().catch(() => null);
-
-      if (res.ok && body?.success !== false) {
-        const saleId = body?.data?.saleId ?? body?.data?.id ?? body?.saleId ?? body?.id ?? "";
-
-        const invoiceData: InvoiceData = {
-          invoiceNo: saleId ? String(saleId) : `ORD-${Date.now()}`,
-          date: formatInvoiceDate(),
-          customerName: customerName.trim() || undefined,
-          customerPhone: customerPhone.trim() || undefined,
-          customerAddress: customerAddress.trim() || undefined,
-          items: invoiceItems,
-          subtotal: total,
-          discount: Math.round(discountValue * 100) / 100,
-          total: finalTotal,
-          paymentMode: paymentMode as "Cash" | "Card" | "UPI",
-          orderType: "Pick Up",
-          billTime: formatInvoiceBillTime(),
-          cashierName: getSessionCashierName(),
-        };
-
-        setLastOrder(invoiceData);
-        clear();
-        setCustomerName("");
-        setCustomerPhone("");
-        setCustomerAddress("");
-        setDiscountInput("");
-        setCashReceived("");
-        onOrderPlaced?.();
-
-        notification.open?.({
-          type: "success",
-          message: "Order placed!",
-          description: "You can now print the invoice.",
+      let syncedOk = false;
+      try {
+        const res = await fetch(`${API_BASE_URL}/sales`, {
+          method: "POST",
+          headers: getApiHeaders(),
+          body: JSON.stringify(payload),
         });
-        await queryClient.invalidateQueries({
-          queryKey: keys().data().resource("sales").action("list").get(),
-        });
-      } else {
-        const serverMsg = body?.message || `Server returned ${res.status}`;
-        console.error("Order failed:", serverMsg, "Payload:", payload);
-        notification.open?.({
-          type: "error",
-          message: "Order not saved",
-          description: serverMsg,
-        });
+        const body = await res.json().catch(() => null);
+
+        if (res.ok && body?.success !== false) {
+          const saleId = body?.data?.saleId ?? body?.data?.id ?? body?.saleId ?? body?.id ?? "";
+          removeFromQueue(queued.localId);
+          invoiceData.invoiceNo = saleId ? String(saleId) : queued.localId;
+          syncedOk = true;
+          await queryClient.invalidateQueries({
+            queryKey: keys().data().resource("sales").action("list").get(),
+          });
+        } else {
+          const serverMsg = (body as Record<string, unknown> | null)?.message ?? `Server returned ${res.status}`;
+          console.error("Order API error:", serverMsg, payload);
+        }
+      } catch {
+        // Network offline — order stays in queue, will be retried
       }
-    } catch {
-      console.info("Order payload (request failed):", payload);
-      notification.open?.({
-        type: "error",
-        message: "Could not reach server",
-        description: "Check the console for the payload. Cart is kept so you can retry.",
-      });
+
+      setLastOrder(invoiceData);
+      setSavedOffline(!syncedOk);
+      clear();
+      setCustomerName("");
+      setCustomerPhone("");
+      setCustomerAddress("");
+      setDiscountInput("");
+      setCashReceived("");
+      onOrderPlaced?.();
+
+      notification.open?.(
+        syncedOk
+          ? { type: "success", message: "Order placed!", description: "You can now print the invoice." }
+          : { type: "success", message: "Order saved offline", description: "It will sync automatically when connected." },
+      );
     } finally {
       setSubmitting(false);
     }
@@ -286,10 +294,23 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   if (lastOrder) {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", height: "100%", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 2, py: 4 }}>
-        <CheckCircleOutlineIcon sx={{ fontSize: 64, color: "success.main" }} />
+        {savedOffline ? (
+          <WifiOffIcon sx={{ fontSize: 64, color: "warning.main" }} />
+        ) : (
+          <CheckCircleOutlineIcon sx={{ fontSize: 64, color: "success.main" }} />
+        )}
         <Typography variant="h6" fontWeight={700}>
-          Order Placed!
+          {savedOffline ? "Order Saved Offline" : "Order Placed!"}
         </Typography>
+        {savedOffline && (
+          <Chip
+            icon={<WifiOffIcon />}
+            label="Pending sync — will upload when connected"
+            color="warning"
+            size="small"
+            variant="outlined"
+          />
+        )}
         <Typography variant="body2" color="text.secondary">
           Invoice: {lastOrder.invoiceNo}
         </Typography>
