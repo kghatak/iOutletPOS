@@ -75,6 +75,12 @@ export type SalesGridRow = {
   outletId?: string;
   /** Business sale id without `#` (optional body.saleId) */
   plainSaleId?: string;
+  /** Row originated from the offline queue — not yet in DB */
+  pendingSync?: boolean;
+  /** Offline queue exhausted retries — needs manual retry */
+  syncFailed?: boolean;
+  /** Offline queue localId for retry/remove operations */
+  localId?: string;
 };
 
 function pickLineItems(record: SaleRecord): unknown[] {
