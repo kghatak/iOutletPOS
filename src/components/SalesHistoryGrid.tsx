@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
@@ -15,6 +16,8 @@ import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import EditIcon from "@mui/icons-material/Edit";
 import PrintIcon from "@mui/icons-material/Print";
+import SyncIcon from "@mui/icons-material/Sync";
+import WifiOffIcon from "@mui/icons-material/WifiOff";
 import type { SalesGridRow } from "../types/sale";
 import { formatRupeeInr } from "../types/sale";
 import { printThermalInvoice } from "../utils/thermalInvoice";
@@ -104,9 +107,11 @@ function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
 function RowActions({
   row,
   onEdit,
+  onRetrySync,
 }: {
   row: SalesGridRow;
   onEdit: (row: SalesGridRow) => void;
+  onRetrySync?: (localId: string) => void;
 }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
@@ -114,6 +119,8 @@ function RowActions({
     setAnchor(null);
     void printThermalInvoice(saleRowToInvoiceData(row)).catch(console.error);
   };
+
+  const isPending = row.pendingSync || row.syncFailed;
 
   return (
     <>
@@ -131,28 +138,43 @@ function RowActions({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <MenuItem
-          onClick={() => {
-            setAnchor(null);
-            onEdit(row);
-          }}
-        >
-          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Edit</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => handlePrint()}>
+        {!isPending && (
+          <MenuItem
+            onClick={() => {
+              setAnchor(null);
+              onEdit(row);
+            }}
+          >
+            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Edit</ListItemText>
+          </MenuItem>
+        )}
+        <MenuItem onClick={handlePrint}>
           <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Print Invoice</ListItemText>
         </MenuItem>
-        <MenuItem
-          onClick={() => {
-            void navigator.clipboard.writeText(row.salesId);
-            setAnchor(null);
-          }}
-        >
-          <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
-          <ListItemText>Copy salesId</ListItemText>
-        </MenuItem>
+        {row.syncFailed && row.localId && (
+          <MenuItem
+            onClick={() => {
+              setAnchor(null);
+              onRetrySync?.(row.localId!);
+            }}
+          >
+            <ListItemIcon><SyncIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Retry Sync</ListItemText>
+          </MenuItem>
+        )}
+        {!isPending && (
+          <MenuItem
+            onClick={() => {
+              void navigator.clipboard.writeText(row.salesId);
+              setAnchor(null);
+            }}
+          >
+            <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Copy salesId</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
     </>
   );
@@ -162,9 +184,10 @@ type SalesHistoryGridProps = {
   rows: SalesGridRow[];
   loading: boolean;
   error: boolean;
+  onRetrySync?: (localId: string) => void;
 };
 
-export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps) {
+export function SalesHistoryGrid({ rows, loading, error, onRetrySync }: SalesHistoryGridProps) {
   const [editRow, setEditRow] = useState<SalesGridRow | null>(null);
 
   const columns: GridColDef<SalesGridRow>[] = useMemo(
@@ -173,7 +196,33 @@ export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps
         field: "salesId",
         headerName: "salesId",
         flex: 1,
-        minWidth: 100,
+        minWidth: 120,
+        renderCell: (params) => {
+          const row = params.row;
+          if (row.syncFailed) {
+            return (
+              <Chip
+                icon={<WifiOffIcon />}
+                label="Sync failed"
+                color="error"
+                size="small"
+                variant="outlined"
+              />
+            );
+          }
+          if (row.pendingSync) {
+            return (
+              <Chip
+                icon={<WifiOffIcon />}
+                label="Pending sync"
+                color="warning"
+                size="small"
+                variant="outlined"
+              />
+            );
+          }
+          return <Typography variant="body2">{params.value as string}</Typography>;
+        },
       },
       {
         field: "products",
@@ -221,7 +270,11 @@ export function SalesHistoryGrid({ rows, loading, error }: SalesHistoryGridProps
         align: "center",
         headerAlign: "center",
         renderCell: (params) => (
-          <RowActions row={params.row} onEdit={(r) => setEditRow(r)} />
+          <RowActions
+            row={params.row}
+            onEdit={(r) => setEditRow(r)}
+            onRetrySync={onRetrySync}
+          />
         ),
       },
     ],

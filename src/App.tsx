@@ -25,6 +25,9 @@ import GlobalStyles from "@mui/material/GlobalStyles";
 import Box from "@mui/material/Box";
 
 import { dataProvider } from "./providers/dataProvider";
+import { startSyncService } from "./utils/syncService";
+
+startSyncService();
 import { authProvider } from "./providers/authProvider";
 import { OutletProvider } from "./context/outlet-context";
 import { CartProvider } from "./context/cart-context";
