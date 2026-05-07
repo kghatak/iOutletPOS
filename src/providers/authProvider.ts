@@ -14,6 +14,8 @@ type Session = {
   phoneNumber: string;
   /** Shown in the header — prefer outlet name from login `data.outlet.name`. */
   name: string;
+  address?: string;
+  primaryPhoneNumber?: string;
   email?: string;
   id?: string;
   outletId?: string;
@@ -108,6 +110,13 @@ function outletNameFrom(data: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function pickText(...values: Array<unknown>): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 /**
  * Maps login JSON to session fields. Supports
  * `{ success, data: { token, phoneNumber, outlet: { name }, userId, outletId, tenantId } }`
@@ -136,6 +145,18 @@ function pickSessionFields(
   );
 
   const fromOutlet = outletNameFrom(data);
+  const outlet =
+    data.outlet && typeof data.outlet === "object"
+      ? (data.outlet as Record<string, unknown>)
+      : null;
+  const address = pickText(data.address, data.outletAddress, outlet?.address);
+  const primaryPhoneNumber = pickText(
+    data.primaryPhoneNumber,
+    data.primaryPhone,
+    data.outletPrimaryPhoneNumber,
+    outlet?.primaryPhoneNumber,
+    outlet?.phoneNumber,
+  );
   const name =
     fromOutlet ||
     (typeof data.name === "string" && data.name.trim()) ||
@@ -151,12 +172,29 @@ function pickSessionFields(
   return {
     phoneNumber,
     name,
+    address,
+    primaryPhoneNumber,
     email,
     id,
     outletId,
     tenantId,
     userId,
   };
+}
+
+export function getSessionOutletPrintInfo(): {
+  address?: string;
+  primaryPhoneNumber?: string;
+} {
+  try {
+    const session = readSession();
+    return {
+      address: session?.address?.trim() || undefined,
+      primaryPhoneNumber: session?.primaryPhoneNumber?.trim() || undefined,
+    };
+  } catch {
+    return {};
+  }
 }
 
 async function readErrorMessage(res: Response): Promise<string> {
