@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
-import { useList, keys } from "@refinedev/core";
+import { useList, keys, useNotification } from "@refinedev/core";
 import { useQueryClient } from "@tanstack/react-query";
 import type { SaleRecord, SalesGridRow } from "../../types/sale";
 import { saleRecordsToGridRows } from "../../types/sale";
@@ -59,12 +59,17 @@ function queuedOrderToGridRow(order: QueuedOrder): SalesGridRow {
 
 export const SalesPage = () => {
   const queryClient = useQueryClient();
+  const notification = useNotification();
   const { pending, failed, orders } = useOfflineQueue();
 
   const salesListQuery = useList<SaleRecord>({
     resource: "sales",
     pagination: { mode: "off" },
-    queryOptions: { staleTime: 30 * 1000 },
+    queryOptions: {
+      staleTime: 30 * 1000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
   });
 
   // Refetch from server whenever an offline order successfully syncs
@@ -74,8 +79,8 @@ export const SalesPage = () => {
         queryKey: keys().data().resource("sales").action("list").get(),
       });
     };
-    window.addEventListener("offlinequeue:synced", handler);
-    return () => window.removeEventListener("offlinequeue:synced", handler);
+    window.addEventListener("offlinequeue:batch-synced", handler);
+    return () => window.removeEventListener("offlinequeue:batch-synced", handler);
   }, [queryClient]);
 
   const serverRows = useMemo(
@@ -91,6 +96,23 @@ export const SalesPage = () => {
 
   const allRows = useMemo(() => [...queueRows, ...serverRows], [queueRows, serverRows]);
 
+  const handleTryReconnect = () => {
+    if (!navigator.onLine) {
+      notification.open?.({
+        type: "warning",
+        message: "Still offline",
+        description: "Please reconnect to internet, then try again.",
+      });
+      return;
+    }
+    void syncPendingOrders();
+    notification.open?.({
+      type: "info",
+      message: "Sync started",
+      description: "Trying to sync offline orders now.",
+    });
+  };
+
   const handleRetrySync = (localId: string) => {
     updateQueueEntry(localId, { status: "pending_sync" });
     void syncPendingOrders();
@@ -99,7 +121,15 @@ export const SalesPage = () => {
   return (
     <>
       {pending.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 1 }}>
+        <Alert
+          severity="warning"
+          sx={{ mb: 1 }}
+          action={(
+            <Button color="inherit" size="small" onClick={handleTryReconnect}>
+              Try Reconnect
+            </Button>
+          )}
+        >
           {pending.length} order{pending.length > 1 ? "s" : ""} saved offline — will sync automatically when connected.
         </Alert>
       )}
