@@ -7,6 +7,7 @@ import {
 } from "@react-pdf/renderer";
 import type { InvoiceData, InvoiceItem } from "../types/thermalInvoice";
 import { numberToWordsIndian } from "../utils/numberToWords";
+import { getSessionOutletPrintInfo } from "../providers/authProvider";
 
 /** Cart uses a number; API payloads may use `{ amount }`. */
 function normalizeInvoiceDiscount(v: unknown): number {
@@ -183,14 +184,17 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
     const billTime = data.billTime ?? "—";
     const billDate = formatRetailBillDate(date);
     const billNo = displayBillNo(String(invoiceNo));
+    const outletInfo = getSessionOutletPrintInfo();
+    const displayOutletAddress = outletInfo.address || "Village Buchi, Pundri, Kaithal";
+    const displayOutletContact = outletInfo.primaryPhoneNumber || "98127-12739, 92559-19666";
 
     return (
       <Document>
         <Page size={[pageWidthPt, 2000]} style={retail3.page}>
           <Text style={retail3.retailTitle}>RETAIL INVOICE</Text>
-          <Text style={retail3.storeName}>NANNU AGRO PRIVATE LIMITED</Text>
-          <Text style={retail3.centerLine}>Add: Village Buchi, Pundri, Kaithal</Text>
-          <Text style={retail3.centerLine}>mob: 98127-12739, 92559-19666</Text>
+          <Text style={retail3.storeName}>NANNU MILK</Text>
+          <Text style={retail3.centerLine}>Add: {displayOutletAddress}</Text>
+          <Text style={retail3.centerLine}>Mob: {displayOutletContact}</Text>
           <View style={retail3.rule} />
 
           <Text style={retail3.metaSingle}>
