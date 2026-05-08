@@ -221,6 +221,18 @@ async function readErrorMessage(res: Response): Promise<string> {
   return message;
 }
 
+function getErrorStatusCode(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const e = error as { statusCode?: unknown; status?: unknown; response?: unknown };
+  if (typeof e.statusCode === "number") return e.statusCode;
+  if (typeof e.status === "number") return e.status;
+  if (e.response && typeof e.response === "object") {
+    const r = e.response as { status?: unknown };
+    if (typeof r.status === "number") return r.status;
+  }
+  return undefined;
+}
+
 // Dev credentials for bypassing auth when backend is unavailable
 const DEV_PHONE = "1234567890";
 const DEV_PASSWORD = "dev123";
@@ -338,10 +350,18 @@ export const authProvider: AuthProvider = {
     return { authenticated: true };
   },
 
-  onError: async () => ({
-    logout: true,
-    redirectTo: "/login",
-  }),
+  onError: async (error) => {
+    const status = getErrorStatusCode(error);
+    if (status === 401 || status === 403) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      window.dispatchEvent(new Event(SESSION_END_EVENT));
+      return {
+        logout: false,
+        redirectTo: "/session-expired",
+      };
+    }
+    return {};
+  },
 
   getIdentity: async () => {
     const session = readSession();

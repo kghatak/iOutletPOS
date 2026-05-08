@@ -65,6 +65,7 @@ export const SalesPage = () => {
   const salesListQuery = useList<SaleRecord>({
     resource: "sales",
     pagination: { mode: "off" },
+    errorNotification: false,
     queryOptions: {
       staleTime: 30 * 1000,
       refetchOnWindowFocus: false,
@@ -99,7 +100,7 @@ export const SalesPage = () => {
   const handleTryReconnect = () => {
     if (!navigator.onLine) {
       notification.open?.({
-        type: "warning",
+        type: "error",
         message: "Still offline",
         description: "Please reconnect to internet, then try again.",
       });
@@ -107,7 +108,7 @@ export const SalesPage = () => {
     }
     void syncPendingOrders();
     notification.open?.({
-      type: "info",
+      type: "success",
       message: "Sync started",
       description: "Trying to sync offline orders now.",
     });

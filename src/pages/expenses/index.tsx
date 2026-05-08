@@ -67,6 +67,7 @@ export const ExpensePage = () => {
   const listQuery = useList<ExpenseRecord>({
     resource: "expenses",
     pagination: { mode: "off" },
+    errorNotification: false,
     queryOptions: { staleTime: 30 * 1000 },
   });
 

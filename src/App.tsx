@@ -35,6 +35,7 @@ import { ProductList } from "./pages/products/list";
 import { SalesPage } from "./pages/sales/index";
 import { ExpensePage } from "./pages/expenses/index";
 import { LoginPage } from "./pages/login/index";
+import { SessionExpiredPage } from "./pages/session-expired/index";
 import { ReportsPage } from "./pages/reports/index";
 import { ProductsManagementPage } from "./pages/products-management/index";
 
@@ -142,6 +143,7 @@ function App() {
               >
                 <Routes>
                   <Route path="/login" element={<LoginPage />} />
+                  <Route path="/session-expired" element={<SessionExpiredPage />} />
                   <Route
                     element={
                       <Authenticated key="main" redirectOnFail="/login">

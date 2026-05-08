@@ -8,6 +8,15 @@ import { getApiHeaders } from "./authProvider";
 
 const base = simpleRestDataProvider(API_BASE_URL);
 
+type HttpErrorLike = Error & { statusCode?: number; status?: number };
+
+function createHttpError(status: number, message: string): HttpErrorLike {
+  const error = new Error(message) as HttpErrorLike;
+  error.statusCode = status;
+  error.status = status;
+  return error;
+}
+
 function normalizeListResponse<T>(json: unknown): T[] {
   if (Array.isArray(json)) return json as T[];
   if (!json || typeof json !== "object") return [];
@@ -55,7 +64,7 @@ export const dataProvider: DataProvider = {
         { headers: getApiHeaders() },
       );
       if (!response.ok) {
-        throw new Error("Could not load products");
+        throw createHttpError(response.status, "Could not load products");
       }
       const json = await response.json();
       const raw = extractOutletProducts(json);
@@ -79,7 +88,7 @@ export const dataProvider: DataProvider = {
         headers: getApiHeaders(),
       });
       if (!response.ok) {
-        throw new Error("Could not load products");
+        throw createHttpError(response.status, "Could not load products");
       }
       const data = (await response.json()) as Product[];
       return {
@@ -92,7 +101,7 @@ export const dataProvider: DataProvider = {
         headers: getApiHeaders(),
       });
       if (!response.ok) {
-        throw new Error("Could not load sales");
+        throw createHttpError(response.status, "Could not load sales");
       }
       const json = await response.json();
       const data = normalizeListResponse<SaleRecord>(json);
@@ -106,7 +115,7 @@ export const dataProvider: DataProvider = {
         headers: getApiHeaders(),
       });
       if (!response.ok) {
-        throw new Error("Could not load expenses");
+        throw createHttpError(response.status, "Could not load expenses");
       }
       const json = await response.json();
       const data = normalizeListResponse<ExpenseRecord>(json);
