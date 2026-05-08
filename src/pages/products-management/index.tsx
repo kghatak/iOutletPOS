@@ -50,6 +50,7 @@ export const ProductsManagementPage = () => {
   const listQuery = useList<Product>({
     resource: "all-products",
     pagination: { mode: "off" },
+    errorNotification: false,
     queryOptions: { staleTime: 5 * 60 * 1000 },
   });
 
