@@ -19,7 +19,7 @@ import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
 import InventoryOutlinedIcon from "@mui/icons-material/InventoryOutlined";
-import { ThemeProvider } from "@mui/material/styles";
+import { createTheme, ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import GlobalStyles from "@mui/material/GlobalStyles";
 import Box from "@mui/material/Box";
@@ -40,6 +40,16 @@ import { ReportsPage } from "./pages/reports/index";
 import { ProductsManagementPage } from "./pages/products-management/index";
 
 const BRAND_ICON_SRC = "/nannu-milk-icon.png";
+const appTheme = createTheme(RefineThemes.Blue, {
+  palette: {
+    primary: {
+      main: "#d32f2f",
+    },
+    secondary: {
+      main: "#ef5350",
+    },
+  },
+});
 
 const AppTitle: FC<{ collapsed: boolean }> = ({ collapsed }) => (
   <ThemedTitle
@@ -65,7 +75,7 @@ const AppTitle: FC<{ collapsed: boolean }> = ({ collapsed }) => (
 function App() {
   return (
     <BrowserRouter>
-      <ThemeProvider theme={RefineThemes.Blue}>
+      <ThemeProvider theme={appTheme}>
         <CssBaseline />
         <GlobalStyles styles={{ html: { WebkitFontSmoothing: "auto" } }} />
         <RefineSnackbarProvider>
