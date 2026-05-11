@@ -36,6 +36,12 @@ import {
 } from "../utils/thermalInvoice";
 import { enqueueOrder, removeFromQueue } from "../utils/offlineQueue";
 
+const compactInputSx = {
+  "& .MuiInputBase-root": { fontSize: "0.72rem" },
+  "& .MuiInputBase-input": { py: 0.65 },
+  "& .MuiInputLabel-root": { fontSize: "0.72rem" },
+} as const;
+
 function CartLineRow({
   line,
   setQuantity,
@@ -69,33 +75,38 @@ function CartLineRow({
   };
 
   return (
-    <Box sx={{ py: 1 }}>
+    <Box sx={{ py: 0.65 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
-        <Box sx={{ flex: 1, mr: 1 }}>
-          <Typography variant="body2" fontWeight={500} noWrap>
+        <Box sx={{ flex: 1, mr: 0.75 }}>
+          <Typography variant="body2" fontWeight={500} noWrap sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}>
             {line.name}
           </Typography>
           {line.stockCap != null && (
-            <Typography variant="caption" color={atMax ? "warning.main" : "text.secondary"}>
+            <Typography
+              variant="caption"
+              color={atMax ? "warning.main" : "text.secondary"}
+              sx={{ fontSize: "0.625rem", display: "block" }}
+            >
               Stock: {line.stockCap}
             </Typography>
           )}
         </Box>
-        <IconButton size="small" onClick={() => removeLine(line.productId)} sx={{ color: "error.main" }}>
-          <DeleteOutlineIcon fontSize="small" />
+        <IconButton size="small" onClick={() => removeLine(line.productId)} sx={{ color: "error.main", p: 0.35 }}>
+          <DeleteOutlineIcon sx={{ fontSize: "1.1rem" }} />
         </IconButton>
       </Stack>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 0.5 }}>
-        <Stack direction="row" alignItems="center" spacing={0.5}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mt: 0.35 }}>
+        <Stack direction="row" alignItems="center" spacing={0.35}>
           <IconButton
             size="small"
+            sx={{ p: 0.35 }}
             onClick={() => {
               const next = line.quantity - 1;
               if (next <= 0) setQuantity(line.productId, 0);
               else setQuantity(line.productId, next);
             }}
           >
-            <RemoveIcon fontSize="small" />
+            <RemoveIcon sx={{ fontSize: "1.1rem" }} />
           </IconButton>
           <TextField
             size="small"
@@ -107,17 +118,17 @@ function CartLineRow({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            sx={{ width: 60 }}
-            slotProps={{ htmlInput: { style: { textAlign: "center", padding: "4px 0" } } }}
+            sx={{ width: 52, "& .MuiInputBase-input": { py: 0.35, fontSize: "0.72rem" } }}
+            slotProps={{ htmlInput: { style: { textAlign: "center", padding: "2px 0" } } }}
           />
-          <IconButton size="small" disabled={atMax} onClick={() => setQuantity(line.productId, line.quantity + 1)}>
-            <AddIcon fontSize="small" />
+          <IconButton size="small" disabled={atMax} sx={{ p: 0.35 }} onClick={() => setQuantity(line.productId, line.quantity + 1)}>
+            <AddIcon sx={{ fontSize: "1.1rem" }} />
           </IconButton>
-          <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 0.35, fontSize: "0.625rem" }}>
             × ₹{line.unitPrice.toFixed(2)}
           </Typography>
         </Stack>
-        <Typography variant="body2" fontWeight={600}>
+        <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.72rem" }}>
           ₹{lineSubtotal(line).toFixed(2)}
         </Typography>
       </Stack>
@@ -293,13 +304,13 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   // ── Order success screen ──
   if (lastOrder) {
     return (
-      <Box sx={{ display: "flex", flexDirection: "column", height: "100%", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 2, py: 4 }}>
+      <Box sx={{ display: "flex", flexDirection: "column", height: "100%", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 1.5, py: 3 }}>
         {savedOffline ? (
-          <WifiOffIcon sx={{ fontSize: 64, color: "warning.main" }} />
+          <WifiOffIcon sx={{ fontSize: 48, color: "warning.main" }} />
         ) : (
-          <CheckCircleOutlineIcon sx={{ fontSize: 64, color: "success.main" }} />
+          <CheckCircleOutlineIcon sx={{ fontSize: 48, color: "success.main" }} />
         )}
-        <Typography variant="h6" fontWeight={700}>
+        <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.88rem" }}>
           {savedOffline ? "Order Saved Offline" : "Order Placed!"}
         </Typography>
         {savedOffline && (
@@ -311,37 +322,38 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             variant="outlined"
           />
         )}
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.68rem" }}>
           Invoice: {lastOrder.invoiceNo}
         </Typography>
         {typeof lastOrder.discount === "number" && lastOrder.discount > 0 && (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.68rem" }}>
             Discount: −₹{lastOrder.discount.toFixed(2)}
           </Typography>
         )}
-        <Typography variant="h6" fontWeight={700}>
+        <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.92rem" }}>
           ₹{lastOrder.total.toFixed(2)}
         </Typography>
         {lastOrder.paymentMode && (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.68rem" }}>
             Paid via {lastOrder.paymentMode}
           </Typography>
         )}
 
         <Button
           variant="contained"
-          size="large"
+          size="small"
           fullWidth
-          startIcon={<PrintIcon />}
+          startIcon={<PrintIcon sx={{ fontSize: "1.1rem" }} />}
           onClick={() => handlePrintInvoice()}
-          sx={{ mt: 2, py: 1.5, fontWeight: 700 }}
+          sx={{ mt: 1.5, py: 0.85, fontWeight: 700, fontSize: "0.72rem" }}
         >
           Print Invoice
         </Button>
         <Button
           variant="outlined"
-          size="large"
+          size="small"
           fullWidth
+          sx={{ fontSize: "0.72rem", py: 0.85 }}
           onClick={() => {
             handleNewOrder();
             onNewOrder?.();
@@ -356,35 +368,36 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   // ── Cart view ──
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
+      <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 0.85, fontSize: "0.9rem" }}>
         Cart
         {lines.length > 0 && (
-          <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+          <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.75, fontSize: "0.68rem" }}>
             ({lines.length} {lines.length === 1 ? "item" : "items"})
           </Typography>
         )}
       </Typography>
 
       {lines.length === 0 ? (
-        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 4 }}>
-          <Typography color="text.secondary" textAlign="center">
+        <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", py: 3 }}>
+          <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ fontSize: "0.72rem" }}>
             Add products to get started.
           </Typography>
         </Box>
       ) : (
         <>
           <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, mb: 1 }}>
-            <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5 }}>
-              <Typography variant="caption" color="text.secondary" gutterBottom display="block">
+            <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15 }}>
+              <Typography variant="caption" color="text.secondary" gutterBottom display="block" sx={{ fontSize: "0.625rem" }}>
                 Customer (optional)
               </Typography>
-              <Stack spacing={1}>
+              <Stack spacing={0.85}>
                 <TextField
                   label="Name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   fullWidth
                   size="small"
+                  sx={compactInputSx}
                 />
                 <TextField
                   label="Phone"
@@ -396,6 +409,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                   }
                   fullWidth
                   size="small"
+                  sx={compactInputSx}
                   slotProps={{
                     htmlInput: {
                       maxLength: 10,
@@ -412,6 +426,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                   size="small"
                   multiline
                   minRows={1}
+                  sx={compactInputSx}
                 />
               </Stack>
             </Paper>
@@ -426,27 +441,27 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
               ))}
             </Box>
 
-          <Divider sx={{ my: 1 }} />
+          <Divider sx={{ my: 0.85 }} />
           <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
               Subtotal
             </Typography>
-            <Typography variant="body2" fontWeight={600}>
+            <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
               ₹{total.toFixed(2)}
             </Typography>
           </Stack>
 
           {/* Discount */}
-          <Stack direction="row" alignItems="center" spacing={1} sx={{ mt: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={0.85} sx={{ mt: 0.85 }}>
             <ToggleButtonGroup
               value={discountType}
               exclusive
               onChange={(_, v) => { if (v) setDiscountType(v); }}
               size="small"
-              sx={{ height: 36 }}
+              sx={{ height: 28 }}
             >
-              <ToggleButton value="₹" sx={{ px: 1.2, fontWeight: 700, fontSize: "0.85rem" }}>₹</ToggleButton>
-              <ToggleButton value="%" sx={{ px: 1.2, fontWeight: 700, fontSize: "0.85rem" }}>%</ToggleButton>
+              <ToggleButton value="₹" sx={{ px: 0.85, fontWeight: 700, fontSize: "0.72rem", py: 0.25 }}>₹</ToggleButton>
+              <ToggleButton value="%" sx={{ px: 0.85, fontWeight: 700, fontSize: "0.72rem", py: 0.25 }}>%</ToggleButton>
             </ToggleButtonGroup>
             <TextField
               size="small"
@@ -455,25 +470,26 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
               value={discountInput}
               onChange={(e) => setDiscountInput(e.target.value)}
               fullWidth
+              sx={compactInputSx}
               slotProps={{ htmlInput: { min: 0, max: discountType === "%" ? 100 : total, step: "any" } }}
             />
           </Stack>
           {discountValue > 0 && (
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
-              <Typography variant="body2" color="error.main">
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.35 }}>
+              <Typography variant="caption" color="error.main" sx={{ fontSize: "0.68rem" }}>
                 {discountType === "%" ? "Discount (%)" : "Discount (₹)"}
               </Typography>
-              <Typography variant="body2" color="error.main" fontWeight={600}>
+              <Typography variant="caption" color="error.main" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
                 −₹{discountValue.toFixed(2)}
               </Typography>
             </Stack>
           )}
 
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1, mb: 1.5 }}>
-            <Typography variant="subtitle1" fontWeight={700}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.85, mb: 1.15 }}>
+            <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.8rem" }}>
               Total
             </Typography>
-            <Typography variant="h6" fontWeight={700}>
+            <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.9rem" }}>
               ₹{finalTotal.toFixed(2)}
             </Typography>
           </Stack>
@@ -487,14 +503,14 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             onChange={(e) => { setPaymentMode(e.target.value as "Cash" | "Card" | "UPI" | ""); setCashReceived(""); }}
             fullWidth
             size="small"
-            sx={{ mb: 1.5 }}
+            sx={{ mb: 1.15, ...compactInputSx }}
             slotProps={{
               inputLabel: { shrink: true },
               select: {
                 displayEmpty: true,
                 renderValue: (selected) =>
                   selected === "" ? (
-                    <Typography component="span" variant="body2" color="text.secondary">
+                    <Typography component="span" variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
                       Select payment mode
                     </Typography>
                   ) : (
@@ -510,7 +526,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
           {/* Cash received & change */}
           {paymentMode === "Cash" && (
-            <Paper variant="outlined" sx={{ p: 1.5, mb: 1.5, bgcolor: "grey.50" }}>
+            <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15, bgcolor: "grey.50" }}>
               <TextField
                 label="Cash Received"
                 type="number"
@@ -518,20 +534,21 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                 onChange={(e) => setCashReceived(e.target.value)}
                 fullWidth
                 size="small"
+                sx={compactInputSx}
                 slotProps={{ htmlInput: { min: 0, step: "any" } }}
               />
               {cashReceivedNum > 0 && cashReceivedNum >= finalTotal && (
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 1 }}>
-                  <Typography variant="body2" fontWeight={700} color="success.main">
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.85 }}>
+                  <Typography variant="caption" fontWeight={700} color="success.main" sx={{ fontSize: "0.68rem" }}>
                     Return to Customer
                   </Typography>
-                  <Typography variant="h6" fontWeight={700} color="success.main">
+                  <Typography variant="body2" fontWeight={700} color="success.main" sx={{ fontSize: "0.82rem" }}>
                     ₹{changeToReturn.toFixed(2)}
                   </Typography>
                 </Stack>
               )}
               {cashReceivedNum > 0 && cashReceivedNum < finalTotal && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.5, display: "block" }}>
+                <Typography variant="caption" color="error" sx={{ mt: 0.35, display: "block", fontSize: "0.68rem" }}>
                   Insufficient — ₹{(finalTotal - cashReceivedNum).toFixed(2)} more needed
                 </Typography>
               )}
@@ -543,11 +560,18 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           <Button
             variant="contained"
             fullWidth
-            size="large"
+            size="small"
             disabled={submitting || !canPlaceOrder}
-            startIcon={<ShoppingCartCheckoutIcon />}
+            startIcon={<ShoppingCartCheckoutIcon sx={{ fontSize: "1.15rem" }} />}
             onClick={handlePlaceOrder}
-            sx={{ flexShrink: 0, py: 1.5, fontWeight: 700, fontSize: "1rem", bgcolor: "#ef6c00", "&:hover": { bgcolor: "#e65100" } }}
+            sx={{
+              flexShrink: 0,
+              py: 0.85,
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              bgcolor: "#ef6c00",
+              "&:hover": { bgcolor: "#e65100" },
+            }}
           >
             {submitting ? "Placing order…" : "Confirm & Place Order"}
           </Button>

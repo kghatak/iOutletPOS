@@ -97,38 +97,57 @@ function ProductCard({ product }: { product: Product }) {
 
   return (
     <Card variant="outlined" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <CardContent sx={{ flexGrow: 1, p: 1.5, "&:last-child": { pb: 1.5 } }}>
-        <Typography variant="body2" fontWeight={600} noWrap title={product.name}>
+      <CardContent sx={{ flexGrow: 1, p: 1.25, "&:last-child": { pb: 1.25 } }}>
+        <Typography
+          variant="body2"
+          fontWeight={600}
+          noWrap
+          title={product.name}
+          sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}
+        >
           {product.name}
         </Typography>
         {product.category ? (
-          <Typography variant="caption" color="text.secondary" display="block" noWrap>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            display="block"
+            noWrap
+            sx={{ fontSize: "0.625rem", mt: 0.125 }}
+          >
             {product.category}
           </Typography>
         ) : null}
-        <Typography variant="subtitle1" fontWeight={700} sx={{ mt: 0.5 }}>
+        <Typography variant="body2" fontWeight={700} sx={{ mt: 0.35, fontSize: "0.8rem" }}>
           ₹{product.price.toFixed(2)}
           {product.unit ? (
-            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+            <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 0.35, fontSize: "0.625rem" }}>
               /{product.unit}
             </Typography>
           ) : null}
         </Typography>
         {hasStock ? (
           outOfStock ? (
-            <Typography variant="caption" color="error" fontWeight={600} display="block">
+            <Typography variant="caption" color="error" fontWeight={600} display="block" sx={{ fontSize: "0.625rem", mt: 0.125 }}>
               Out of Stock
             </Typography>
           ) : (
-            <Typography variant="caption" color="text.secondary" display="block">
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.625rem", mt: 0.125 }}>
               Stock: {product.availableQuantity}
             </Typography>
           )
         ) : null}
       </CardContent>
-      <CardActions sx={{ px: 1.5, pb: 1.5, pt: 0, flexDirection: "column", alignItems: "stretch", gap: 0.5 }}>
+      <CardActions sx={{ px: 1.25, pb: 1.25, pt: 0, flexDirection: "column", alignItems: "stretch", gap: 0.5 }}>
         {!inCart ? (
-          <Button variant="contained" fullWidth size="small" onClick={onAddFirst} disabled={outOfStock}>
+          <Button
+            variant="contained"
+            fullWidth
+            size="small"
+            onClick={onAddFirst}
+            disabled={outOfStock}
+            sx={{ fontSize: "0.72rem", py: 0.35, minHeight: 28 }}
+          >
             {outOfStock ? "Add" : "Add"}
           </Button>
         ) : (
@@ -146,12 +165,12 @@ function ProductCard({ product }: { product: Product }) {
               onKeyDown={(e) => {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               }}
-              sx={{ width: 56 }}
+              sx={{ width: 50 }}
               slotProps={{
                 htmlInput: {
                   min: 0,
                   max: stockCap,
-                  style: { textAlign: "center", padding: "4px 0" },
+                  style: { textAlign: "center", padding: "2px 0", fontSize: "0.75rem" },
                 },
               }}
             />
@@ -291,7 +310,7 @@ export const ProductList = () => {
           spacing={2}
           mb={3}
         >
-          <Typography variant="h5" component="h1">
+          <Typography variant="h6" component="h1" sx={{ fontWeight: 600, fontSize: "1rem" }}>
             Products
           </Typography>
           <TextField
@@ -299,7 +318,10 @@ export const ProductList = () => {
             placeholder="Search by name"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            sx={{ minWidth: 220 }}
+            sx={{
+              minWidth: 200,
+              "& .MuiInputBase-input": { fontSize: "0.8rem", py: 0.75 },
+            }}
             slotProps={{
               input: {
                 startAdornment: (
@@ -312,15 +334,15 @@ export const ProductList = () => {
           />
         </Stack>
 
-        <Grid container spacing={1.5}>
+        <Grid container spacing={1.25}>
           {products.map((product: Product) => (
             <Grid
               item
-              xs={6}
-              sm={4}
-              md={isDesktop && showCart ? 6 : 3}
-              lg={isDesktop && showCart ? 4 : 3}
-              xl={isDesktop && showCart ? 3 : 2}
+              xs={4}
+              sm={3}
+              md={isDesktop && showCart ? 4 : 3}
+              lg={isDesktop && showCart ? 3 : 2}
+              xl={2}
               key={product.productId}
             >
               <ProductCard product={product} />
