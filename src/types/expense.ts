@@ -15,6 +15,8 @@ export type ExpenseCategoryValue = (typeof EXPENSE_CATEGORIES)[number]["value"];
 
 export type ExpenseRecord = BaseRecord & {
   id?: string;
+  /** MongoDB ObjectId string when returned by the API */
+  _id?: string;
   expenseId?: string;
   outletId?: string;
   type?: string;
@@ -39,6 +41,22 @@ export type ExpenseGridRow = {
 export function getExpenseRowId(r: ExpenseRecord, i: number): string {
   const id = r.expenseId ?? r.id;
   return typeof id === "string" && id ? id : `exp-${i}`;
+}
+
+/**
+ * For PATCH/DELETE `/expenses/:id` — server accepts Mongo `_id` or business `expenseId`.
+ */
+export function getExpenseApiId(r: ExpenseRecord): string {
+  const business =
+    typeof r.expenseId === "string" && r.expenseId.trim()
+      ? r.expenseId.trim()
+      : "";
+  if (business) return business;
+  const mongo =
+    typeof r._id === "string" && r._id.trim() ? r._id.trim() : "";
+  if (mongo) return mongo;
+  const id = typeof r.id === "string" && r.id.trim() ? r.id.trim() : "";
+  return id;
 }
 
 function getExpenseCategory(r: ExpenseRecord): string {
@@ -68,12 +86,10 @@ function getExpenseDate(r: ExpenseRecord): string {
   if (typeof raw !== "string" || !raw.trim()) return "—";
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString(undefined, {
+  return d.toLocaleDateString(undefined, {
     month: "long",
     day: "numeric",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   });
 }
 
