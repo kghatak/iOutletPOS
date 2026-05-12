@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -9,21 +9,56 @@ import ListItemText from "@mui/material/ListItemText";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { DataGrid, type GridColDef } from "@mui/x-data-grid";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import {
+  DataGrid,
+  type GridColDef,
+  type GridPaginationModel,
+} from "@mui/x-data-grid";
 import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import EditIcon from "@mui/icons-material/Edit";
 import PrintIcon from "@mui/icons-material/Print";
 import SyncIcon from "@mui/icons-material/Sync";
 import WifiOffIcon from "@mui/icons-material/WifiOff";
+import { useQueryClient } from "@tanstack/react-query";
+import { keys, useNotification } from "@refinedev/core";
+import { buildSaleUpdatePayload, patchSale } from "../api/saleUpdate";
+import { useOutlet } from "../context/outlet-context";
 import type { SalesGridRow } from "../types/sale";
-import { formatRupeeInr } from "../types/sale";
+import { formatRupeeInr, isSalePaymentDue } from "../types/sale";
 import { printThermalInvoice } from "../utils/thermalInvoice";
 import type { InvoiceData } from "../types/thermalInvoice";
 import { EditSaleDialog } from "./EditSaleDialog";
 import { getSessionCashierName } from "../providers/authProvider";
+
+/** Epoch ms for sorting — prefers ISO from API, else parses formatted `createdAt`. */
+function saleRowSortTimestampMs(row: SalesGridRow): number {
+  if (row.createdAtIso) {
+    const t = Date.parse(row.createdAtIso);
+    if (!Number.isNaN(t)) return t;
+  }
+  const t = Date.parse(row.createdAt);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/** Digits only; for 10+ digits use last 10 so +91 / leading 0 variants match. */
+function normalizePhoneGroupKey(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 0) return "";
+  if (digits.length >= 10) return digits.slice(-10);
+  return digits;
+}
+
+/** Group Outstanding dues: same normalized phone ⇒ one customer; no phone ⇒ name (best effort); neither ⇒ per-row. */
+function outstandingDueGroupKey(row: SalesGridRow): string {
+  const phoneKey = normalizePhoneGroupKey((row.customer?.phone ?? "").trim());
+  if (phoneKey.length > 0) return `p:${phoneKey}`;
+  const name = (row.customer?.name ?? "").trim().toLowerCase();
+  if (name.length > 0) return `n:${name}`;
+  return `\0uniq:${row.id}`;
+}
 
 function escapeCsvField(s: string): string {
   if (s.includes('"') || s.includes(",") || s.includes("\n")) {
@@ -164,19 +199,60 @@ function RowActions({
             <ListItemText>Retry Sync</ListItemText>
           </MenuItem>
         )}
-        {!isPending && (
-          <MenuItem
-            onClick={() => {
-              void navigator.clipboard.writeText(row.salesId);
-              setAnchor(null);
-            }}
-          >
-            <ListItemIcon><ContentCopyIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>Copy salesId</ListItemText>
-          </MenuItem>
-        )}
       </Menu>
     </>
+  );
+}
+
+type CollectPaymentMode = "Cash" | "Card" | "UPI";
+
+/** Due list only: dropdown chooses how payment was collected; triggers PATCH immediately. */
+function CollectDuePaymentSelect({
+  row,
+  loading,
+  onSelect,
+}: {
+  row: SalesGridRow;
+  loading: boolean;
+  onSelect: (row: SalesGridRow, mode: CollectPaymentMode) => Promise<void>;
+}) {
+  return (
+    <TextField
+      select
+      size="small"
+      value=""
+      disabled={loading}
+      fullWidth
+      sx={{ maxWidth: 138, "& .MuiSelect-select": { py: 0.65 } }}
+      slotProps={{
+        htmlInput: { "aria-label": "Collected payment mode" },
+        select: {
+          displayEmpty: true,
+          renderValue: () =>
+            loading ? (
+              <CircularProgress size={18} />
+            ) : (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                component="span"
+                sx={{ fontSize: "0.8rem" }}
+              >
+                Collect as…
+              </Typography>
+            ),
+        },
+      }}
+      onChange={(e) => {
+        const mode = e.target.value as CollectPaymentMode;
+        if (!mode || loading) return;
+        void onSelect(row, mode);
+      }}
+    >
+      <MenuItem value="Cash">Cash</MenuItem>
+      <MenuItem value="Card">Card</MenuItem>
+      <MenuItem value="UPI">UPI</MenuItem>
+    </TextField>
   );
 }
 
@@ -185,13 +261,139 @@ type SalesHistoryGridProps = {
   loading: boolean;
   error: boolean;
   onRetrySync?: (localId: string) => void;
+  /** Show Collected control (PATCH sale payment to Cash / Card / UPI). */
+  dueCollectionMode?: boolean;
+  /** Title shown above the grid */
+  listTitle?: string;
+  /** Server-driven paging (omit for a simple unpaginated table, e.g. offline queue only). */
+  serverPagination?: {
+    rowCount: number;
+    paginationModel: GridPaginationModel;
+    onPaginationModelChange: (model: GridPaginationModel) => void;
+  };
+  /** Compact table — no paging footer / export (offline queue slice). */
+  compactTable?: boolean;
+  /** Omit Export CSV (queue block). */
+  hideExport?: boolean;
 };
 
-export function SalesHistoryGrid({ rows, loading, error, onRetrySync }: SalesHistoryGridProps) {
+export function SalesHistoryGrid({
+  rows,
+  loading,
+  error,
+  onRetrySync,
+  dueCollectionMode = false,
+  listTitle = "Sales",
+  serverPagination,
+  compactTable = false,
+  hideExport = false,
+}: SalesHistoryGridProps) {
+  const queryClient = useQueryClient();
+  const notification = useNotification();
+  const { outletId: sessionOutletId } = useOutlet();
   const [editRow, setEditRow] = useState<SalesGridRow | null>(null);
+  const [collectingId, setCollectingId] = useState<string | null>(null);
 
-  const columns: GridColDef<SalesGridRow>[] = useMemo(
-    () => [
+  const collectDuePayment = useCallback(
+    async (row: SalesGridRow, mode: CollectPaymentMode) => {
+      if (!row.documentId) {
+        notification.open?.({
+          type: "error",
+          message: "Cannot collect",
+          description: "Missing sale document id from server.",
+        });
+        return;
+      }
+      const oid = (row.outletId ?? sessionOutletId ?? "").trim();
+      if (!oid) {
+        notification.open?.({
+          type: "error",
+          message: "No outlet",
+          description: "Sign in again.",
+        });
+        return;
+      }
+      setCollectingId(row.id);
+      try {
+        const payload = buildSaleUpdatePayload(
+          oid,
+          row.customer,
+          row.rawItems,
+          row.discount,
+          mode,
+          row.plainSaleId,
+        );
+        const res = await patchSale(row.documentId, payload);
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const msg =
+            (body && typeof body === "object" && "message" in body
+              ? String((body as { message: unknown }).message)
+              : null) || `HTTP ${res.status}`;
+          notification.open?.({
+            type: "error",
+            message: "Could not mark collected",
+            description: msg,
+          });
+          return;
+        }
+        notification.open?.({
+          type: "success",
+          message: "Marked as collected",
+          description: `Payment recorded as ${mode}.`,
+        });
+        await queryClient.invalidateQueries({
+          queryKey: keys().data().resource("sales").action("list").get(),
+        });
+      } catch {
+        notification.open?.({
+          type: "error",
+          message: "Network error",
+          description: "Could not reach the server.",
+        });
+      } finally {
+        setCollectingId(null);
+      }
+    },
+    [notification, queryClient, sessionOutletId],
+  );
+
+  const rowsSortedNewestFirst = useMemo(
+    () => [...rows].sort((a, b) => saleRowSortTimestampMs(b) - saleRowSortTimestampMs(a)),
+    [rows],
+  );
+
+  const { gridRows, dueRowGrouping } = useMemo(() => {
+    if (!dueCollectionMode) {
+      return {
+        gridRows: rowsSortedNewestFirst,
+        dueRowGrouping: null as Map<string, { index: number; total: number }> | null,
+      };
+    }
+    const counts = new Map<string, number>();
+    for (const r of rowsSortedNewestFirst) {
+      const k = outstandingDueGroupKey(r);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    const sorted = [...rowsSortedNewestFirst].sort((a, b) => {
+      const cmp = outstandingDueGroupKey(a).localeCompare(outstandingDueGroupKey(b));
+      if (cmp !== 0) return cmp;
+      return saleRowSortTimestampMs(b) - saleRowSortTimestampMs(a);
+    });
+    const grouping = new Map<string, { index: number; total: number }>();
+    const nextIndexByKey = new Map<string, number>();
+    for (const r of sorted) {
+      const k = outstandingDueGroupKey(r);
+      const total = counts.get(k) ?? 1;
+      const idx = (nextIndexByKey.get(k) ?? 0) + 1;
+      nextIndexByKey.set(k, idx);
+      grouping.set(r.id, { index: idx, total });
+    }
+    return { gridRows: sorted, dueRowGrouping: grouping };
+  }, [dueCollectionMode, rowsSortedNewestFirst]);
+
+  const columns: GridColDef<SalesGridRow>[] = useMemo(() => {
+    const base: GridColDef<SalesGridRow>[] = [
       {
         field: "salesId",
         headerName: "salesId",
@@ -239,6 +441,100 @@ export function SalesHistoryGrid({ rows, loading, error, onRetrySync }: SalesHis
         align: "right",
         headerAlign: "right",
       },
+      ...(dueCollectionMode
+        ? ([
+            {
+              field: "customerName",
+              headerName: "Name",
+              flex: 1,
+              minWidth: 120,
+              sortable: false,
+              renderCell: (params: { row: SalesGridRow }) => {
+                const name = (params.row.customer?.name ?? "").trim();
+                const grp = dueRowGrouping?.get(params.row.id);
+                const subtitle =
+                  grp && grp.total > 1 ? `Due ${grp.index} / ${grp.total}` : "";
+                const title = [name || "—", subtitle].filter(Boolean).join(" — ");
+                return (
+                  <Stack spacing={0} sx={{ minWidth: 0, py: 0.25 }}>
+                    <Typography variant="body2" noWrap title={title}>
+                      {name || "—"}
+                    </Typography>
+                    {subtitle ? (
+                      <Typography variant="caption" color="text.secondary" noWrap title={subtitle}>
+                        {subtitle}
+                      </Typography>
+                    ) : null}
+                  </Stack>
+                );
+              },
+            },
+            {
+              field: "collectDue",
+              headerName: "Payment",
+              minWidth: 148,
+              flex: 0.75,
+              sortable: false,
+              filterable: false,
+              disableColumnMenu: true,
+              align: "center",
+              headerAlign: "center",
+              renderCell: (params: { row: SalesGridRow }) => {
+                const row = params.row;
+                if (row.pendingSync || row.syncFailed || !row.documentId) {
+                  return (
+                    <Typography variant="caption" color="text.disabled">
+                      —
+                    </Typography>
+                  );
+                }
+                const load = collectingId === row.id;
+                return (
+                  <CollectDuePaymentSelect
+                    row={row}
+                    loading={load}
+                    onSelect={(r, mode) => collectDuePayment(r, mode)}
+                  />
+                );
+              },
+            },
+          ] as GridColDef<SalesGridRow>[])
+        : ([
+            {
+              field: "paymentMode",
+              headerName: "Payment",
+              flex: 0.65,
+              minWidth: 96,
+              sortable: false,
+              renderCell: (params: { row: SalesGridRow }) => {
+                const row = params.row;
+                if (row.pendingSync || row.syncFailed) {
+                  return (
+                    <Typography variant="caption" color="text.secondary">
+                      —
+                    </Typography>
+                  );
+                }
+                if (isSalePaymentDue(row.paymentMode)) {
+                  return (
+                    <Chip
+                      label="Due"
+                      color="warning"
+                      size="small"
+                      variant="outlined"
+                      sx={{ height: 22, fontSize: "0.7rem" }}
+                    />
+                  );
+                }
+                const m = (row.paymentMode ?? "").trim();
+                return (
+                  <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+                    {m || "—"}
+                  </Typography>
+                );
+              },
+            },
+          ] as GridColDef<SalesGridRow>[])),
       {
         field: "amount",
         headerName: "Amount",
@@ -259,27 +555,34 @@ export function SalesHistoryGrid({ rows, loading, error, onRetrySync }: SalesHis
         headerName: "CreatedAt",
         flex: 1.2,
         minWidth: 130,
-      },
-      {
-        field: "actions",
-        headerName: "Actions",
-        width: 70,
-        sortable: false,
-        filterable: false,
-        disableColumnMenu: true,
-        align: "center",
-        headerAlign: "center",
+        type: "number",
+        valueGetter: (_, row) => saleRowSortTimestampMs(row),
         renderCell: (params) => (
-          <RowActions
-            row={params.row}
-            onEdit={(r) => setEditRow(r)}
-            onRetrySync={onRetrySync}
-          />
+          <Typography variant="body2">{params.row.createdAt}</Typography>
         ),
       },
-    ],
-    [],
-  );
+    ];
+
+    base.push({
+      field: "actions",
+      headerName: "Actions",
+      width: 70,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      align: "center",
+      headerAlign: "center",
+      renderCell: (params) => (
+        <RowActions
+          row={params.row}
+          onEdit={(r) => setEditRow(r)}
+          onRetrySync={onRetrySync}
+        />
+      ),
+    });
+
+    return base;
+  }, [dueCollectionMode, collectingId, collectDuePayment, onRetrySync, dueRowGrouping]);
 
   const header = (
     <Stack
@@ -288,20 +591,22 @@ export function SalesHistoryGrid({ rows, loading, error, onRetrySync }: SalesHis
       alignItems="center"
       flexWrap="wrap"
       gap={2}
-      sx={{ mb: 2 }}
+      sx={{ mb: compactTable ? 1 : 2 }}
     >
-      <Typography variant="h5" component="h1">
-        Sales
+      <Typography variant={compactTable ? "subtitle1" : "h5"} component="h1">
+        {listTitle}
       </Typography>
-      <Button
-        variant="outlined"
-        size="medium"
-        startIcon={<FileDownloadOutlinedIcon />}
-        disabled={rows.length === 0 || loading}
-        onClick={() => downloadSalesCsv(rows)}
-      >
-        Export
-      </Button>
+      {!hideExport && (
+        <Button
+          variant="outlined"
+          size="medium"
+          startIcon={<FileDownloadOutlinedIcon />}
+          disabled={gridRows.length === 0 || loading}
+          onClick={() => downloadSalesCsv(gridRows)}
+        >
+          Export
+        </Button>
+      )}
     </Stack>
   );
 
@@ -337,29 +642,57 @@ export function SalesHistoryGrid({ rows, loading, error, onRetrySync }: SalesHis
 
       {header}
 
-      {rows.length === 0 ? (
+      {gridRows.length === 0 ? (
         <Typography color="text.secondary" sx={{ py: 3 }}>
-          No recorded sales yet.
+          {dueCollectionMode ? "No outstanding due sales." : "No recorded sales yet."}
         </Typography>
       ) : (
         <Box sx={{ width: "100%", overflowX: "auto" }}>
           <DataGrid
-            rows={rows}
+            rows={gridRows}
             columns={columns}
             disableRowSelectionOnClick
-            pageSizeOptions={[10, 25, 50]}
+            pageSizeOptions={[10, 25, 50, 100]}
+            {...(compactTable
+              ? {
+                  hideFooter: true as const,
+                  paginationMode: "client" as const,
+                  paginationModel: {
+                    page: 0,
+                    pageSize: Math.max(gridRows.length, 1),
+                  },
+                  onPaginationModelChange: (
+                    _: GridPaginationModel,
+                  ): void => {
+                    /** Single-page block; paging UI hidden via hideFooter. */
+                  },
+                }
+              : serverPagination
+                ? {
+                    paginationMode: "server" as const,
+                    rowCount: Math.max(serverPagination.rowCount, 0),
+                    paginationModel: serverPagination.paginationModel,
+                    onPaginationModelChange: serverPagination.onPaginationModelChange,
+                  }
+                : {
+                    paginationMode: "client" as const,
+                  })}
             initialState={{
-              pagination: { paginationModel: { pageSize: 10 } },
+              ...(!compactTable && !serverPagination
+                ? { pagination: { paginationModel: { pageSize: 10 } } }
+                : {}),
               sorting: {
                 sortModel: [{ field: "createdAt", sort: "desc" }],
               },
             }}
             sx={{
               minWidth: 600,
+              width: "100%",
+              ...(!compactTable ? { height: 560 } : {}),
               "& .MuiDataGrid-columnHeaderTitle": { fontWeight: 600 },
               "& .MuiDataGrid-cell": { alignItems: "center", display: "flex" },
             }}
-            autoHeight
+            autoHeight={compactTable}
             disableColumnResize={false}
           />
         </Box>

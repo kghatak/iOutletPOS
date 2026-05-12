@@ -26,6 +26,21 @@ function normalizeListResponse<T>(json: unknown): T[] {
   return [];
 }
 
+function parseSalesListEnvelope(json: unknown): {
+  rows: SaleRecord[];
+  total: number;
+} {
+  const rows = normalizeListResponse<SaleRecord>(json);
+  let total = rows.length;
+  if (!json || typeof json !== "object") return { rows, total };
+  const p = (json as Record<string, unknown>).pagination;
+  if (p && typeof p === "object" && p !== null) {
+    const t = Number((p as Record<string, unknown>).total);
+    if (!Number.isNaN(t)) total = Math.trunc(Math.max(t, 0));
+  }
+  return { rows, total };
+}
+
 function getOutletId(): string {
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
@@ -97,17 +112,37 @@ export const dataProvider: DataProvider = {
       };
     }
     if (resource === "sales") {
-      const response = await fetch(`${API_BASE_URL}/Sales`, {
+      const qs = new URLSearchParams();
+      const p = params.pagination;
+      const meta = params.meta as { salesDueOnly?: boolean } | undefined;
+
+      if (!p || p.mode === "off") {
+        qs.set("skip", "0");
+        qs.set("limit", String(5000));
+      } else {
+        const limit = Math.max(1, Math.floor(p.pageSize ?? 10));
+        const currentPage = Math.max(1, Math.floor(p.currentPage ?? 1));
+        const skip = (currentPage - 1) * limit;
+        qs.set("skip", String(skip));
+        qs.set("limit", String(limit));
+      }
+      if (meta?.salesDueOnly) qs.set("paymentMode", "Due");
+
+      const url =
+        qs.size > 0
+          ? `${API_BASE_URL}/Sales?${qs.toString()}`
+          : `${API_BASE_URL}/Sales`;
+      const response = await fetch(url, {
         headers: getApiHeaders(),
       });
       if (!response.ok) {
         throw createHttpError(response.status, "Could not load sales");
       }
       const json = await response.json();
-      const data = normalizeListResponse<SaleRecord>(json);
+      const { rows: data, total } = parseSalesListEnvelope(json);
       return {
         data: data as unknown as TData[],
-        total: data.length,
+        total,
       };
     }
     if (resource === "expenses") {

@@ -13,6 +13,8 @@ import {
   lineSubtotal,
   normalizeCartQuantity,
   productToLine,
+  qtyForTargetLineRupee,
+  roundCartLineInr,
 } from "../types/cart";
 import {
   AUTH_UPDATED_EVENT,
@@ -64,9 +66,31 @@ function normalizeLines(raw: unknown): CartLine[] {
     if (typeof productId !== "string" || !productId) continue;
     if (typeof name !== "string") continue;
     if (typeof unitPrice !== "number" || !Number.isFinite(unitPrice)) continue;
-    const q = normalizeCartQuantity(Number(quantity));
-    if (q <= 0) continue;
-    out.push({ productId, name, unitPrice, quantity: q });
+    const qNum = Number(quantity);
+    if (!(qNum > 0) || !Number.isFinite(qNum)) continue;
+    const pricedTotalRaw = o.pricedTotal;
+    const pricedTotal =
+      typeof pricedTotalRaw === "number" && Number.isFinite(pricedTotalRaw)
+        ? roundCartLineInr(pricedTotalRaw)
+        : undefined;
+    const q =
+      pricedTotal != null ? qNum : normalizeCartQuantity(qNum);
+    if (pricedTotal != null ? !(q > 0) : q <= 0) continue;
+    const stockCapRaw = o.stockCap;
+    const stockCap =
+      typeof stockCapRaw === "number" &&
+      Number.isFinite(stockCapRaw) &&
+      stockCapRaw >= 0
+        ? stockCapRaw
+        : undefined;
+    out.push({
+      productId,
+      name,
+      unitPrice,
+      quantity: q,
+      ...(stockCap != null ? { stockCap } : {}),
+      ...(pricedTotal != null ? { pricedTotal } : {}),
+    });
   }
   return out;
 }
@@ -127,6 +151,8 @@ type CartContextValue = {
   /** Add this many units in one step (merged with any existing line). */
   addProductQuantity: (product: Product, quantity: number) => void;
   setQuantity: (productId: string, quantity: number) => void;
+  /** Set billed line total ₹ (e.g. 2000) and derive qty; keeps exact rupees on the line. */
+  applyLineRupeeAmount: (productId: string, rupees: number) => void;
   removeLine: (productId: string) => void;
   clear: () => void;
   itemCount: number;
@@ -148,7 +174,7 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
       const next = [...prev];
       let newQty = next[idx].quantity + 1;
       if (next[idx].stockCap != null) newQty = Math.min(newQty, next[idx].stockCap!);
-      next[idx] = { ...next[idx], quantity: newQty };
+      next[idx] = { ...next[idx], quantity: newQty, pricedTotal: undefined };
       return next;
     });
   }, []);
@@ -163,7 +189,7 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
       const next = [...prev];
       let newQty = next[idx].quantity + q;
       if (next[idx].stockCap != null) newQty = Math.min(newQty, next[idx].stockCap!);
-      next[idx] = { ...next[idx], quantity: newQty };
+      next[idx] = { ...next[idx], quantity: newQty, pricedTotal: undefined };
       return next;
     });
   }, []);
@@ -175,10 +201,37 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
       return prev.map((l) => {
         if (l.productId !== productId) return l;
         const capped = l.stockCap != null ? Math.min(q, l.stockCap) : q;
-        return { ...l, quantity: capped };
+        return { ...l, quantity: capped, pricedTotal: undefined };
       });
     });
   }, []);
+
+  const applyLineRupeeAmount = useCallback(
+    (productId: string, rupeesRaw: number) => {
+      const rt = roundCartLineInr(Math.max(0, rupeesRaw));
+      setLines((prev) =>
+        prev
+          .map((l) => {
+            if (l.productId !== productId) return l;
+            const unit = l.unitPrice;
+            if (!(Number.isFinite(unit) && unit > 0)) {
+              return { ...l, pricedTotal: undefined };
+            }
+            if (rt <= 0) return null;
+            let qIdeal = qtyForTargetLineRupee(unit, rt);
+            let priced = rt;
+            if (!(qIdeal > 0)) return l;
+            if (l.stockCap != null && qIdeal > l.stockCap + 1e-12) {
+              qIdeal = l.stockCap;
+              priced = roundCartLineInr(qIdeal * unit);
+            }
+            return { ...l, quantity: qIdeal, pricedTotal: priced };
+          })
+          .filter((x): x is CartLine => x != null),
+      );
+    },
+    [],
+  );
 
   const removeLine = useCallback((productId: string) => {
     setLines((prev) => prev.filter((l) => l.productId !== productId));
@@ -217,12 +270,23 @@ export const CartProvider: React.FC<React.PropsWithChildren> = ({
       addProduct,
       addProductQuantity,
       setQuantity,
+      applyLineRupeeAmount,
       removeLine,
       clear,
       itemCount,
       total,
     }),
-    [lines, addProduct, addProductQuantity, setQuantity, removeLine, clear, itemCount, total],
+    [
+      lines,
+      addProduct,
+      addProductQuantity,
+      setQuantity,
+      applyLineRupeeAmount,
+      removeLine,
+      clear,
+      itemCount,
+      total,
+    ],
   );
 
   return (

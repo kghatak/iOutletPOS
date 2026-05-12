@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "../config";
 import { getApiHeaders } from "../providers/authProvider";
 import type { SaleLineItem, SaleOrderDiscount } from "../types/sale";
+import { normalizeCartQuantity } from "../types/cart";
 
 /**
  * ## Backend contract (not implemented in this repo — align your API)
@@ -32,6 +33,8 @@ import type { SaleLineItem, SaleOrderDiscount } from "../types/sale";
  *   "paymentMode": "Cash"
  * }
  * ```
+ *
+ * Use `paymentMode`: `"Due"` for credit sales; when payment is collected, `PATCH` the same sale with the collected channel (`"Cash"`, `"Card"`, or `"UPI"` — chosen in Sales → Outstanding due → **Collected**).
  *
  * Optional: include `"saleId": "OUTID113-SALE-..."` in the body if your backend keys updates by business id instead of URL param.
  */
@@ -85,9 +88,9 @@ function applyDiscountToSubtotal(
   };
 }
 
-/** Live preview for UI: subtotal from lines, then same discount math as save payload. */
+/** Live preview for UI: subtotal sums each line `lineTotal` (matches API), fallback to qty×price. */
 export function previewSaleTotals(
-  lines: Array<Pick<SaleLineItem, "unitPrice" | "quantity">>,
+  lines: Array<Pick<SaleLineItem, "unitPrice" | "quantity" | "lineTotal">>,
   existingDiscount: SaleOrderDiscount | undefined,
 ): {
   subtotal: number;
@@ -98,7 +101,12 @@ export function previewSaleTotals(
   const subtotal = round2(
     lines
       .filter((l) => l.quantity > 0)
-      .reduce((s, l) => s + round2(l.unitPrice * l.quantity), 0),
+      .reduce((s, l) => {
+        const lt = Number.isFinite(l.lineTotal)
+          ? l.lineTotal
+          : l.unitPrice * l.quantity;
+        return s + round2(lt);
+      }, 0),
   );
   const { discount, total } = applyDiscountToSubtotal(subtotal, existingDiscount);
   const discountAmount = round2(subtotal - total);
@@ -117,12 +125,16 @@ export function buildSaleUpdatePayload(
   const items = lines
     .filter((l) => l.quantity > 0)
     .map((l) => {
-      const lineTotal = round2(l.unitPrice * l.quantity);
+      const q = normalizeCartQuantity(l.quantity);
+      const stored = l.lineTotal;
+      const lineTotal = round2(
+        Number.isFinite(stored) ? stored : l.unitPrice * q,
+      );
       return {
         productId: String(l.productId ?? "").trim(),
         name: l.name,
         unitPrice: l.unitPrice,
-        quantity: l.quantity,
+        quantity: q,
         lineTotal,
       };
     });

@@ -50,10 +50,13 @@ function mergeLinesByProduct(lines: LocalLine[]): LocalLine[] {
 
     const hit = merged.get(key);
     if (!hit) {
+      const lt = Number.isFinite(line.lineTotal)
+        ? line.lineTotal
+        : line.unitPrice * line.quantity;
       merged.set(key, {
         ...line,
         key: newKey(),
-        lineTotal: round2(line.unitPrice * line.quantity),
+        lineTotal: round2(lt),
       });
       keyOrder.push(key);
     } else {
@@ -64,11 +67,15 @@ function mergeLinesByProduct(lines: LocalLine[]): LocalLine[] {
         newQ > 0
           ? round2((hit.unitPrice * q1 + line.unitPrice * q2) / newQ)
           : hit.unitPrice;
+      const mergedTotal = round2(
+        (Number.isFinite(hit.lineTotal) ? hit.lineTotal : hit.unitPrice * q1) +
+          (Number.isFinite(line.lineTotal) ? line.lineTotal : line.unitPrice * q2),
+      );
       merged.set(key, {
         ...hit,
         quantity: newQ,
         unitPrice: blended,
-        lineTotal: round2(blended * newQ),
+        lineTotal: mergedTotal,
       });
     }
   }
@@ -98,13 +105,14 @@ function initDiscountFromRow(d: SaleOrderDiscount | undefined): {
   return { type: "₹", input: o.amount != null ? String(o.amount) : "" };
 }
 
-type SalePaymentMode = "Cash" | "Card" | "UPI";
+type SalePaymentMode = "Cash" | "Card" | "UPI" | "Due";
 
 function initPaymentMode(raw: string | undefined): SalePaymentMode {
   const s = (raw ?? "").trim().toLowerCase();
   if (s === "cash") return "Cash";
   if (s === "card") return "Card";
   if (s === "upi") return "UPI";
+  if (s === "due") return "Due";
   return "Cash";
 }
 
@@ -147,7 +155,11 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
         row.rawItems.map((l) => ({
           ...l,
           key: newKey(),
-          lineTotal: round2(l.unitPrice * l.quantity),
+          lineTotal: round2(
+            Number.isFinite(l.lineTotal)
+              ? l.lineTotal
+              : l.unitPrice * l.quantity,
+          ),
         })),
       ),
     );
@@ -169,7 +181,16 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
       round2(
         lines
           .filter((l) => l.quantity > 0)
-          .reduce((s, l) => s + l.unitPrice * l.quantity, 0),
+          .reduce(
+            (s, l) =>
+              s +
+              round2(
+                Number.isFinite(l.lineTotal)
+                  ? l.lineTotal
+                  : l.unitPrice * l.quantity,
+              ),
+            0,
+          ),
       ),
     [lines],
   );
@@ -202,16 +223,31 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
     return previewSaleTotals(lines, orderDiscount);
   }, [lines, row, orderDiscount]);
 
+  const trimmedCustomerName = customerName.trim();
+  const trimmedCustomerPhoneDigits = customerPhone.replace(/\D/g, "");
+  const dueCustomerComplete =
+    trimmedCustomerName.length > 0 &&
+    trimmedCustomerPhoneDigits.length >= 10;
+
   const canSave = useMemo(() => {
     if (!row?.documentId || !outletId) return false;
     if (lines.length === 0) return false;
-    return lines.every(
+    const linesOk = lines.every(
       (l) =>
         l.quantity > 0 &&
         String(l.productId ?? "").trim() !== "" &&
         l.unitPrice >= 0,
     );
-  }, [row?.documentId, outletId, lines]);
+    if (!linesOk) return false;
+    if (paymentMode === "Due") return dueCustomerComplete;
+    return true;
+  }, [
+    row?.documentId,
+    outletId,
+    lines,
+    paymentMode,
+    dueCustomerComplete,
+  ]);
 
   const handleQtyChange = (key: string, raw: string) => {
     const q = Number(raw);
@@ -271,10 +307,34 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
       return;
     }
     if (!canSave) {
+      const linesValid =
+        lines.length > 0 &&
+        lines.every(
+          (l) =>
+            l.quantity > 0 &&
+            String(l.productId ?? "").trim() !== "" &&
+            l.unitPrice >= 0,
+        );
+      if (!linesValid) {
+        notification.open?.({
+          type: "error",
+          message: "Invalid lines",
+          description: "Each line needs a product id and quantity greater than 0.",
+        });
+        return;
+      }
+      if (paymentMode === "Due" && !dueCustomerComplete) {
+        notification.open?.({
+          type: "error",
+          message: "Customer required for Due",
+          description: "Enter name and a 10-digit phone number for credit (Due).",
+        });
+        return;
+      }
       notification.open?.({
         type: "error",
-        message: "Invalid lines",
-        description: "Each line needs a product id and quantity greater than 0.",
+        message: "Cannot save",
+        description: "Check outlet and try again.",
       });
       return;
     }
@@ -285,8 +345,8 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
     const payload = buildSaleUpdatePayload(
       outletId,
       {
-        name: customerName.trim() || undefined,
-        phone: customerPhone.trim() || undefined,
+        name: trimmedCustomerName || undefined,
+        phone: trimmedCustomerPhoneDigits || undefined,
         address: customerAddress.trim() || undefined,
       },
       bareLines,
@@ -354,7 +414,7 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
 
         <Paper variant="outlined" sx={{ p: 1.5, mb: 2 }}>
           <Typography variant="caption" color="text.secondary" gutterBottom display="block">
-            Customer (optional)
+            {paymentMode === "Due" ? "Customer (required for credit)" : "Customer (optional)"}
           </Typography>
           <Stack spacing={1}>
             <TextField
@@ -363,6 +423,13 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
               onChange={(e) => setCustomerName(e.target.value)}
               fullWidth
               size="small"
+              required={paymentMode === "Due"}
+              error={paymentMode === "Due" && trimmedCustomerName.length === 0}
+              helperText={
+                paymentMode === "Due" && trimmedCustomerName.length === 0
+                  ? "Required for Due"
+                  : undefined
+              }
             />
             <TextField
               label="Phone"
@@ -374,6 +441,13 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
               }
               fullWidth
               size="small"
+              required={paymentMode === "Due"}
+              error={paymentMode === "Due" && trimmedCustomerPhoneDigits.length < 10}
+              helperText={
+                paymentMode === "Due" && trimmedCustomerPhoneDigits.length < 10
+                  ? "Enter 10-digit phone"
+                  : undefined
+              }
               slotProps={{
                 htmlInput: {
                   maxLength: 10,
@@ -538,6 +612,7 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
             <MenuItem value="Cash">Cash</MenuItem>
             <MenuItem value="Card">Card</MenuItem>
             <MenuItem value="UPI">UPI</MenuItem>
+            <MenuItem value="Due">Due (credit)</MenuItem>
           </TextField>
 
           <Typography variant="subtitle2" sx={{ pt: 1 }}>
