@@ -1,10 +1,15 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import type { GridPaginationModel } from "@mui/x-data-grid";
 import { useList, keys, useNotification } from "@refinedev/core";
 import { useQueryClient } from "@tanstack/react-query";
 import type { SaleRecord, SalesGridRow } from "../../types/sale";
-import { saleRecordsToGridRows } from "../../types/sale";
+import { isSalePaymentDue, saleRecordsToGridRows } from "../../types/sale";
 import type { SaleOrderDiscount } from "../../types/sale";
 import { SalesHistoryGrid } from "../../components/SalesHistoryGrid";
 import { useOfflineQueue } from "../../hooks/useOfflineQueue";
@@ -61,10 +66,26 @@ export const SalesPage = () => {
   const queryClient = useQueryClient();
   const notification = useNotification();
   const { pending, failed, orders } = useOfflineQueue();
+  const [salesView, setSalesView] = useState<"all" | "due">("all");
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
+    page: 0,
+    pageSize: 10,
+  });
+
+  useEffect(() => {
+    setPaginationModel((m) => ({ ...m, page: 0 }));
+  }, [salesView]);
 
   const salesListQuery = useList<SaleRecord>({
     resource: "sales",
-    pagination: { mode: "off" },
+    pagination: {
+      mode: "server",
+      currentPage: paginationModel.page + 1,
+      pageSize: paginationModel.pageSize,
+    },
+    ...(salesView === "due"
+      ? { meta: { salesDueOnly: true } as Record<string, unknown> }
+      : {}),
     errorNotification: false,
     queryOptions: {
       staleTime: 30 * 1000,
@@ -72,6 +93,26 @@ export const SalesPage = () => {
       refetchOnReconnect: false,
     },
   });
+
+  const totalFromApi = Number(salesListQuery.result?.total ?? 0) || 0;
+
+  const serverRows = useMemo(
+    () =>
+      saleRecordsToGridRows(
+        (salesListQuery.result?.data ?? []) as SaleRecord[],
+      ),
+    [salesListQuery.result?.data],
+  );
+
+  const displayServerRows = useMemo(() => {
+    if (salesView === "all") return serverRows;
+    return serverRows.filter((r) => isSalePaymentDue(r.paymentMode));
+  }, [salesView, serverRows]);
+
+  const queueRows = useMemo(
+    () => orders.map(queuedOrderToGridRow),
+    [orders],
+  );
 
   // Refetch from server whenever an offline order successfully syncs
   useEffect(() => {
@@ -83,19 +124,6 @@ export const SalesPage = () => {
     window.addEventListener("offlinequeue:batch-synced", handler);
     return () => window.removeEventListener("offlinequeue:batch-synced", handler);
   }, [queryClient]);
-
-  const serverRows = useMemo(
-    () => saleRecordsToGridRows(salesListQuery.result?.data ?? []),
-    [salesListQuery.result?.data],
-  );
-
-  // Queued orders shown at the top of the grid
-  const queueRows = useMemo(
-    () => orders.map(queuedOrderToGridRow),
-    [orders],
-  );
-
-  const allRows = useMemo(() => [...queueRows, ...serverRows], [queueRows, serverRows]);
 
   const handleTryReconnect = () => {
     if (!navigator.onLine) {
@@ -121,6 +149,20 @@ export const SalesPage = () => {
 
   return (
     <>
+      <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+        <ToggleButtonGroup
+          value={salesView}
+          exclusive
+          size="small"
+          onChange={(_, v) => {
+            if (v) setSalesView(v);
+          }}
+        >
+          <ToggleButton value="all">All sales</ToggleButton>
+          <ToggleButton value="due">Outstanding due</ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
+
       {pending.length > 0 && (
         <Alert
           severity="warning"
@@ -157,11 +199,36 @@ export const SalesPage = () => {
         </Alert>
       )}
 
+      {queueRows.length > 0 && (
+        <>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+            These rows are saved on this device only until they sync to the server.
+          </Typography>
+          <SalesHistoryGrid
+            rows={queueRows}
+            loading={false}
+            error={false}
+            onRetrySync={handleRetrySync}
+            dueCollectionMode={false}
+            listTitle="Local orders"
+            compactTable
+            hideExport
+          />
+        </>
+      )}
+
       <SalesHistoryGrid
-        rows={allRows}
+        rows={displayServerRows}
         loading={salesListQuery.query.isPending}
         error={salesListQuery.query.isError}
         onRetrySync={handleRetrySync}
+        dueCollectionMode={salesView === "due"}
+        listTitle={salesView === "due" ? "Outstanding due" : "Sales"}
+        serverPagination={{
+          rowCount: totalFromApi,
+          paginationModel,
+          onPaginationModelChange: setPaginationModel,
+        }}
       />
     </>
   );

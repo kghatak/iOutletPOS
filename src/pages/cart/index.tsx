@@ -21,6 +21,7 @@ import { useCart } from "../../context/cart-context";
 import { useOutlet } from "../../context/outlet-context";
 import type { CartLine } from "../../types/cart";
 import {
+  cartLinesToSalePayloadItems,
   formatCartQuantityForInput,
   lineSubtotal,
   parseQtyInputString,
@@ -110,13 +111,7 @@ export const CartPage = () => {
         phone: customerPhone.trim() || undefined,
         address: customerAddress.trim() || undefined,
       },
-      items: lines.map((l) => ({
-        productId: l.productId,
-        name: l.name,
-        unitPrice: l.unitPrice,
-        quantity: l.quantity,
-        lineTotal: lineSubtotal(l),
-      })),
+      items: cartLinesToSalePayloadItems(lines),
       total,
     };
 

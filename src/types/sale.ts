@@ -89,14 +89,20 @@ function pickLineItems(record: SaleRecord): unknown[] {
 }
 
 export function getSaleRowId(record: SaleRecord, index: number): string {
+  const docRaw = record.id;
+  if (docRaw != null) {
+    const doc = String(docRaw).trim();
+    if (doc) return doc;
+  }
   const id =
     record.saleId ??
     record.SaleId ??
-    record.id ??
     record.salesId ??
     record.SalesId ??
     record.sales_id;
-  return typeof id === "string" && id ? id : `sale-${index}`;
+  if (typeof id === "string" && id.trim()) return id.trim();
+  if (typeof id === "number" && Number.isFinite(id)) return String(id);
+  return `sale-${index}`;
 }
 
 /** Value for the salesId grid column: always from DB field `saleId` / `SaleId`. */
@@ -231,6 +237,11 @@ export function getSalePaymentMode(record: SaleRecord): string | undefined {
   return undefined;
 }
 
+/** True when the sale was recorded as credit / buy-now-pay-later (`Due`). */
+export function isSalePaymentDue(mode: string | undefined): boolean {
+  return (mode ?? "").trim().toLowerCase() === "due";
+}
+
 export function formatSaleCreatedAtLong(record: SaleRecord): string {
   const raw = record.createdAt ?? record.CreatedAt ?? record.date ?? record.soldAt;
   if (typeof raw !== "string" || !raw.trim()) return "—";
@@ -299,8 +310,12 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     subtotal: getSaleSubtotal(r),
     discount: getSaleOrderDiscount(r),
     paymentMode: getSalePaymentMode(r),
-    documentId:
-      typeof r.id === "string" && r.id.trim() ? r.id.trim() : undefined,
+    documentId: (() => {
+      const raw = r.id;
+      if (raw == null) return undefined;
+      const s = String(raw).trim();
+      return s || undefined;
+    })(),
     outletId:
       typeof r.outletId === "string" && r.outletId.trim()
         ? r.outletId.trim()

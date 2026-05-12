@@ -24,8 +24,12 @@ import { useCart } from "../context/cart-context";
 import { useOutlet } from "../context/outlet-context";
 import type { CartLine } from "../types/cart";
 import {
-  formatCartQuantityForInput,
+  cartLinesToSalePayloadItems,
+  formatCartQuantityForLine,
+  formatInrAmountForInput,
   lineSubtotal,
+  normalizeCartQuantity,
+  parseInrAmountString,
   parseQtyInputString,
 } from "../types/cart";
 import { API_BASE_URL } from "../config";
@@ -42,29 +46,60 @@ const compactInputSx = {
   "& .MuiInputLabel-root": { fontSize: "0.72rem" },
 } as const;
 
+type PosPaymentMode = "Cash" | "Card" | "UPI" | "Due";
+
 function CartLineRow({
   line,
   setQuantity,
+  applyLineRupeeAmount,
   removeLine,
 }: {
   line: CartLine;
   setQuantity: (productId: string, quantity: number) => void;
+  applyLineRupeeAmount: (productId: string, rupees: number) => void;
   removeLine: (productId: string) => void;
 }) {
-  const [text, setText] = useState(() =>
-    formatCartQuantityForInput(line.quantity),
+  const [text, setText] = useState(() => formatCartQuantityForLine(line));
+  const [amtText, setAmtText] = useState(() =>
+    formatInrAmountForInput(lineSubtotal(line)),
   );
+  const [qtyFocused, setQtyFocused] = useState(false);
+  const [rupeeAmtFocused, setRupeeAmtFocused] = useState(false);
+  const rupeeApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRupeeApplyTimer = () => {
+    if (rupeeApplyTimerRef.current != null) {
+      clearTimeout(rupeeApplyTimerRef.current);
+      rupeeApplyTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => clearRupeeApplyTimer(), []);
 
   useEffect(() => {
-    setText(formatCartQuantityForInput(line.quantity));
-  }, [line.quantity]);
+    if (qtyFocused) return;
+    setText(formatCartQuantityForLine(line));
+  }, [line, qtyFocused]);
+
+  useEffect(() => {
+    if (rupeeAmtFocused) return;
+    setAmtText(formatInrAmountForInput(lineSubtotal(line)));
+  }, [line.quantity, line.unitPrice, line.pricedTotal, rupeeAmtFocused]);
 
   const atMax = line.stockCap != null && line.quantity >= line.stockCap;
+
+  /** −/+ buttons use draft qty while field is focused so they match typed value. */
+  const baseQtyForStepButtons = (): number => {
+    if (!qtyFocused) return line.quantity;
+    const draft = parseQtyInputString(text);
+    if (draft != null && draft > 0) return draft;
+    return line.quantity;
+  };
 
   const commit = () => {
     const n = parseQtyInputString(text);
     if (n === null) {
-      setText(formatCartQuantityForInput(line.quantity));
+      setText(formatCartQuantityForLine(line));
       return;
     }
     if (n <= 0) {
@@ -72,6 +107,37 @@ function CartLineRow({
       return;
     }
     setQuantity(line.productId, n);
+  };
+
+  const commitAmount = () => {
+    clearRupeeApplyTimer();
+    const rupees = parseInrAmountString(amtText);
+    if (rupees === null) {
+      setAmtText(formatInrAmountForInput(lineSubtotal(line)));
+      return;
+    }
+    if (rupees <= 0) {
+      setQuantity(line.productId, 0);
+      return;
+    }
+    const unit = line.unitPrice;
+    if (!Number.isFinite(unit) || unit <= 0) {
+      setAmtText(formatInrAmountForInput(lineSubtotal(line)));
+      return;
+    }
+    applyLineRupeeAmount(line.productId, rupees);
+  };
+
+  const queueRupeeAmtApplyFromText = (raw: string) => {
+    clearRupeeApplyTimer();
+    const unit = line.unitPrice;
+    if (!Number.isFinite(unit) || unit <= 0) return;
+    const rupees = parseInrAmountString(raw);
+    if (rupees == null || rupees <= 0) return;
+    rupeeApplyTimerRef.current = setTimeout(() => {
+      rupeeApplyTimerRef.current = null;
+      applyLineRupeeAmount(line.productId, rupees);
+    }, 120);
   };
 
   return (
@@ -101,7 +167,10 @@ function CartLineRow({
             size="small"
             sx={{ p: 0.35 }}
             onClick={() => {
-              const next = line.quantity - 1;
+              clearRupeeApplyTimer();
+              const base = normalizeCartQuantity(baseQtyForStepButtons());
+              setQtyFocused(false);
+              const next = base - 1;
               if (next <= 0) setQuantity(line.productId, 0);
               else setQuantity(line.productId, next);
             }}
@@ -113,15 +182,40 @@ function CartLineRow({
             type="text"
             inputMode="decimal"
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onBlur={commit}
+            onFocus={() => {
+              clearRupeeApplyTimer();
+              setQtyFocused(true);
+            }}
+            onChange={(e) => {
+              clearRupeeApplyTimer();
+              const v = e.target.value;
+              setText(v);
+              const n = parseQtyInputString(v);
+              if (n != null && n > 0) {
+                setQuantity(line.productId, n);
+              }
+            }}
+            onBlur={() => {
+              commit();
+              setQtyFocused(false);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
             sx={{ width: 52, "& .MuiInputBase-input": { py: 0.35, fontSize: "0.72rem" } }}
             slotProps={{ htmlInput: { style: { textAlign: "center", padding: "2px 0" } } }}
           />
-          <IconButton size="small" disabled={atMax} sx={{ p: 0.35 }} onClick={() => setQuantity(line.productId, line.quantity + 1)}>
+          <IconButton
+            size="small"
+            disabled={atMax}
+            sx={{ p: 0.35 }}
+            onClick={() => {
+              clearRupeeApplyTimer();
+              const base = normalizeCartQuantity(baseQtyForStepButtons());
+              setQtyFocused(false);
+              setQuantity(line.productId, base + 1);
+            }}
+          >
             <AddIcon sx={{ fontSize: "1.1rem" }} />
           </IconButton>
           <Typography variant="caption" color="text.secondary" sx={{ ml: 0.35, fontSize: "0.625rem" }}>
@@ -131,6 +225,45 @@ function CartLineRow({
         <Typography variant="body2" fontWeight={600} sx={{ fontSize: "0.72rem" }}>
           ₹{lineSubtotal(line).toFixed(2)}
         </Typography>
+      </Stack>
+      <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mt: 0.45 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", flexShrink: 0 }}>
+          By ₹
+        </Typography>
+        <TextField
+          size="small"
+          type="text"
+          inputMode="decimal"
+          placeholder="₹ e.g. 200"
+          value={amtText}
+          onChange={(e) => {
+            const v = e.target.value;
+            setAmtText(v);
+            queueRupeeAmtApplyFromText(v);
+          }}
+          onFocus={() => setRupeeAmtFocused(true)}
+          onBlur={() => {
+            commitAmount();
+            setRupeeAmtFocused(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          }}
+          sx={{
+            flex: 1,
+            maxWidth: 100,
+            "& .MuiInputBase-root": { fontSize: "0.72rem" },
+            "& .MuiInputBase-input": { py: 0.45 },
+          }}
+          slotProps={{
+            htmlInput: {
+              style: { textAlign: "right" },
+              "aria-label": "Target line total in rupees; quantity adjusts to match",
+              title:
+                "Type rupee amount; quantity updates automatically (shown after a short pause).",
+            },
+          }}
+        />
       </Stack>
     </Box>
   );
@@ -153,7 +286,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   const queryClient = useQueryClient();
   const notification = useNotification();
   const { outletId } = useOutlet();
-  const { lines, setQuantity, removeLine, clear, total } = useCart();
+  const { lines, setQuantity, applyLineRupeeAmount, removeLine, clear, total } = useCart();
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -162,7 +295,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
   const [discountType, setDiscountType] = useState<"%" | "₹">("₹");
   const [discountInput, setDiscountInput] = useState("");
-  const [paymentMode, setPaymentMode] = useState<"Cash" | "Card" | "UPI" | "">("");
+  const [paymentMode, setPaymentMode] = useState<PosPaymentMode>("Cash");
   const [cashReceived, setCashReceived] = useState("");
 
   const discountValue = useMemo(() => {
@@ -179,6 +312,12 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
     ? cashReceivedNum - finalTotal
     : 0;
 
+  const trimmedCustomerName = customerName.trim();
+  const trimmedCustomerPhone = customerPhone.replace(/\D/g, "");
+  /** Phone field collects up to 10 digits; Due sales need a reachable number on file. */
+  const dueCustomerComplete =
+    trimmedCustomerName.length > 0 && trimmedCustomerPhone.length >= 10;
+
   const [lastOrder, setLastOrder] = useState<InvoiceData | null>(null);
   const [savedOffline, setSavedOffline] = useState(false);
   const lastOrderRef = useRef(lastOrder);
@@ -192,10 +331,27 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   const handleNewOrder = useCallback(() => {
     setLastOrder(null);
     setSavedOffline(false);
+    setPaymentMode("Cash");
   }, []);
 
+  /** Leaving the success screen via "New Order" or by adding products again. */
+  const dismissSuccessScreen = useCallback(() => {
+    handleNewOrder();
+    onNewOrder?.();
+  }, [handleNewOrder, onNewOrder]);
+
+  useEffect(() => {
+    if (lines.length === 0 || lastOrder == null) return;
+    dismissSuccessScreen();
+  }, [lines.length, lastOrder, dismissSuccessScreen]);
+
   const canPlaceOrder =
-    paymentMode === "Cash" || paymentMode === "Card" || paymentMode === "UPI";
+    lines.length > 0 &&
+    (paymentMode === "Cash" ||
+      paymentMode === "Card" ||
+      paymentMode === "UPI" ||
+      paymentMode === "Due") &&
+    (paymentMode !== "Due" || dueCustomerComplete);
 
   const handlePlaceOrder = async () => {
     if (lines.length === 0) {
@@ -203,23 +359,25 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       return;
     }
     if (!canPlaceOrder) {
-      notification.open?.({ type: "error", message: "Select a payment mode" });
+      if (paymentMode === "Due" && !dueCustomerComplete) {
+        notification.open?.({
+          type: "error",
+          message: "Customer required",
+          description: "Enter name and a 10-digit phone number for credit (Due).",
+        });
+        return;
+      }
+      notification.open?.({ type: "error", message: "Cannot place this order." });
       return;
     }
 
-    const invoiceItems = lines.map((l) => ({
-      productId: l.productId,
-      name: l.name,
-      unitPrice: l.unitPrice,
-      quantity: l.quantity,
-      lineTotal: lineSubtotal(l),
-    }));
+    const invoiceItems = cartLinesToSalePayloadItems(lines);
 
     const payload = {
       outletId,
       customer: {
-        name: customerName.trim() || undefined,
-        phone: customerPhone.trim() || undefined,
+        name: trimmedCustomerName || undefined,
+        phone: trimmedCustomerPhone || undefined,
         address: customerAddress.trim() || undefined,
       },
       items: invoiceItems,
@@ -228,20 +386,20 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         ? { type: discountType, value: Number(discountInput) || 0, amount: discountValue }
         : undefined,
       total: finalTotal,
-      paymentMode: paymentMode as "Cash" | "Card" | "UPI",
+      paymentMode,
     };
 
     const invoiceData: InvoiceData = {
       invoiceNo: "",
       date: formatInvoiceDate(),
-      customerName: customerName.trim() || undefined,
-      customerPhone: customerPhone.trim() || undefined,
+      customerName: trimmedCustomerName || undefined,
+      customerPhone: trimmedCustomerPhone || undefined,
       customerAddress: customerAddress.trim() || undefined,
       items: invoiceItems,
       subtotal: total,
       discount: Math.round(discountValue * 100) / 100,
       total: finalTotal,
-      paymentMode: paymentMode as "Cash" | "Card" | "UPI",
+      paymentMode,
       orderType: "Pick Up",
       billTime: formatInvoiceBillTime(),
       cashierName: getSessionCashierName(),
@@ -354,10 +512,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           size="small"
           fullWidth
           sx={{ fontSize: "0.72rem", py: 0.85 }}
-          onClick={() => {
-            handleNewOrder();
-            onNewOrder?.();
-          }}
+          onClick={dismissSuccessScreen}
         >
           New Order
         </Button>
@@ -388,7 +543,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, mb: 1 }}>
             <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15 }}>
               <Typography variant="caption" color="text.secondary" gutterBottom display="block" sx={{ fontSize: "0.625rem" }}>
-                Customer (optional)
+                {paymentMode === "Due" ? "Customer (required for credit)" : "Customer (optional)"}
               </Typography>
               <Stack spacing={0.85}>
                 <TextField
@@ -397,6 +552,13 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                   onChange={(e) => setCustomerName(e.target.value)}
                   fullWidth
                   size="small"
+                  required={paymentMode === "Due"}
+                  error={paymentMode === "Due" && trimmedCustomerName.length === 0}
+                  helperText={
+                    paymentMode === "Due" && trimmedCustomerName.length === 0
+                      ? "Required for Due"
+                      : undefined
+                  }
                   sx={compactInputSx}
                 />
                 <TextField
@@ -409,6 +571,13 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                   }
                   fullWidth
                   size="small"
+                  required={paymentMode === "Due"}
+                  error={paymentMode === "Due" && trimmedCustomerPhone.length < 10}
+                  helperText={
+                    paymentMode === "Due" && trimmedCustomerPhone.length < 10
+                      ? "Enter 10-digit phone"
+                      : undefined
+                  }
                   sx={compactInputSx}
                   slotProps={{
                     htmlInput: {
@@ -435,7 +604,12 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             <Box>
               {lines.map((line, i) => (
                 <Box key={line.productId}>
-                  <CartLineRow line={line} setQuantity={setQuantity} removeLine={removeLine} />
+                  <CartLineRow
+                    line={line}
+                    setQuantity={setQuantity}
+                    applyLineRupeeAmount={applyLineRupeeAmount}
+                    removeLine={removeLine}
+                  />
                   {i < lines.length - 1 && <Divider />}
                 </Box>
               ))}
@@ -500,7 +674,10 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             required
             label="Payment Mode"
             value={paymentMode}
-            onChange={(e) => { setPaymentMode(e.target.value as "Cash" | "Card" | "UPI" | ""); setCashReceived(""); }}
+            onChange={(e) => {
+              setPaymentMode(e.target.value as PosPaymentMode);
+              setCashReceived("");
+            }}
             fullWidth
             size="small"
             sx={{ mb: 1.15, ...compactInputSx }}
@@ -522,6 +699,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             <MenuItem value="Cash">Cash</MenuItem>
             <MenuItem value="Card">Card</MenuItem>
             <MenuItem value="UPI">UPI</MenuItem>
+            <MenuItem value="Due">Due (credit)</MenuItem>
           </TextField>
 
           {/* Cash received & change */}
