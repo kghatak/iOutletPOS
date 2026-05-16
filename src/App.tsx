@@ -34,6 +34,7 @@ import { CartProvider } from "./context/cart-context";
 import { ProductList } from "./pages/products/list";
 import { SalesPage } from "./pages/sales/index";
 import { ExpensePage } from "./pages/expenses/index";
+import { ExpenseDateViewPage } from "./pages/expenses/expense-view";
 import { LoginPage } from "./pages/login/index";
 import { SessionExpiredPage } from "./pages/session-expired/index";
 import { ReportsPage } from "./pages/reports/index";
@@ -189,6 +190,7 @@ function App() {
                     <Route path="/products-management" element={<ProductsManagementPage />} />
                     <Route path="/sales" element={<SalesPage />} />
                     <Route path="/cart" element={<Navigate to="/products" replace />} />
+                    <Route path="/expenses/:dateKey/view" element={<ExpenseDateViewPage />} />
                     <Route path="/expenses" element={<ExpensePage />} />
                     <Route path="/reports" element={<ReportsPage />} />
                     <Route path="*" element={<ErrorComponent />} />

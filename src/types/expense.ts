@@ -13,6 +13,13 @@ export const EXPENSE_CATEGORIES = [
 
 export type ExpenseCategoryValue = (typeof EXPENSE_CATEGORIES)[number]["value"];
 
+export const EXPENSE_PAID_FROM_OPTIONS = [
+  { value: "cash", label: "From Cash" },
+  { value: "upi", label: "From UPI" },
+] as const;
+
+export type ExpensePaidFromValue = (typeof EXPENSE_PAID_FROM_OPTIONS)[number]["value"];
+
 export type ExpenseRecord = BaseRecord & {
   id?: string;
   /** MongoDB ObjectId string when returned by the API */
@@ -28,6 +35,9 @@ export type ExpenseRecord = BaseRecord & {
   createdAt?: string;
   CreatedAt?: string;
   date?: string;
+  remarks?: string;
+  employee?: string;
+  paidFrom?: string;
 };
 
 export type ExpenseGridRow = {
