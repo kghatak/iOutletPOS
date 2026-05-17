@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router";
+import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
@@ -224,6 +226,17 @@ export const SalesPage = () => {
         onRetrySync={handleRetrySync}
         dueCollectionMode={salesView === "due"}
         listTitle={salesView === "due" ? "Outstanding due" : "Sales"}
+        toolbarExtra={(
+          <Button
+            variant="outlined"
+            size="medium"
+            component={Link}
+            to="/sales/item-summary"
+            startIcon={<Inventory2OutlinedIcon />}
+          >
+            Item summary
+          </Button>
+        )}
         serverPagination={{
           rowCount: totalFromApi,
           paginationModel,

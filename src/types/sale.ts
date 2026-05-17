@@ -263,7 +263,7 @@ export function formatRupeeInr(value: number): string {
   })}`;
 }
 
-function extractLineItems(record: SaleRecord): SaleLineItem[] {
+export function getSaleRecordLineItems(record: SaleRecord): SaleLineItem[] {
   const raw = pickLineItems(record);
   return raw.map((x) => {
     if (!x || typeof x !== "object") return { name: "?", unitPrice: 0, quantity: 1, lineTotal: 0 };
@@ -279,6 +279,110 @@ function extractLineItems(record: SaleRecord): SaleLineItem[] {
         : undefined;
     return { name, unitPrice, quantity, lineTotal, productId };
   });
+}
+
+/** Local calendar `YYYY-MM-DD` for grouping (matches how users see sale time). */
+export function getSaleRecordLocalDateKey(record: SaleRecord): string {
+  function localYMD(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+
+  const raw =
+    record.createdAt ?? record.CreatedAt ?? record.date ?? record.soldAt;
+
+  if (raw == null) return "";
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? "" : localYMD(d);
+  }
+
+  const s = typeof raw === "string" ? raw.trim() : String(raw).trim();
+  if (!s) return "";
+
+  // Pure calendar date — do not parse (avoids `YYYY-MM-DD` → UTC-midnight off-by-one in some TZs).
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return s;
+  }
+
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "";
+  return localYMD(d);
+}
+
+function formatItemSummaryDateLabel(dateKey: string): string {
+  if (!dateKey || dateKey === "__nodate__") return "—";
+  const parsed = new Date(`${dateKey}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return dateKey;
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export type ItemSummaryRow = {
+  id: string;
+  dateLabel: string;
+  dateSort: string;
+  productName: string;
+  quantity: number;
+};
+
+/**
+ * Flat rows: qty sold per product per local calendar day (server-backed sales list only).
+ */
+export function itemSummaryRowsFromSaleRecords(records: SaleRecord[]): ItemSummaryRow[] {
+  type Bucket = { dateKey: string; productName: string; quantity: number };
+  const buckets = new Map<string, Bucket>();
+
+  for (const record of records) {
+    let dateKey = getSaleRecordLocalDateKey(record);
+    const dk = dateKey || "__nodate__";
+    const lines = getSaleRecordLineItems(record);
+    for (const line of lines) {
+      const qtyRaw = Number(line.quantity);
+      const qty =
+        typeof line.quantity === "number" && Number.isFinite(line.quantity)
+          ? line.quantity
+          : Number.isFinite(qtyRaw) && qtyRaw > 0
+            ? qtyRaw
+            : 1;
+      const pid = typeof line.productId === "string" && line.productId.trim() ? line.productId.trim() : "";
+      const nameKey = (line.name ?? "").trim().toLowerCase() || "?";
+      const aggKeyPart = pid ? `pid:${pid}` : `name:${nameKey}`;
+      const mapKey = `${dk}\t${aggKeyPart}`;
+      const pname = (line.name ?? "").trim() || "—";
+
+      const existing = buckets.get(mapKey);
+      if (existing) {
+        existing.quantity += qty;
+      } else {
+        buckets.set(mapKey, { dateKey: dk, productName: pname, quantity: qty });
+      }
+    }
+  }
+
+  const out: ItemSummaryRow[] = Array.from(buckets.values()).map((b, idx) => ({
+    id: `summary-${idx}`,
+    dateSort: b.dateKey === "__nodate__" ? "" : b.dateKey,
+    dateLabel: formatItemSummaryDateLabel(b.dateKey),
+    productName: b.productName,
+    quantity: Math.round(b.quantity * 1000) / 1000,
+  }));
+
+  out.sort((a, b) => {
+    const cmpDate = (b.dateSort || "").localeCompare(a.dateSort || "");
+    if (cmpDate !== 0) return cmpDate;
+    return a.productName.localeCompare(b.productName);
+  });
+
+  out.forEach((r, i) => {
+    r.id = `summary-${i}`;
+  });
+  return out;
 }
 
 function getPlainSaleId(record: SaleRecord): string | undefined {
@@ -305,7 +409,7 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     amount: getSaleAmountNumber(r),
     createdAt: formatSaleCreatedAtLong(r),
     createdAtIso: getCreatedAtIso(r),
-    rawItems: extractLineItems(r),
+    rawItems: getSaleRecordLineItems(r),
     customer: r.customer,
     subtotal: getSaleSubtotal(r),
     discount: getSaleOrderDiscount(r),

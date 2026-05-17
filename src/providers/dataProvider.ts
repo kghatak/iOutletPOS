@@ -118,7 +118,7 @@ export const dataProvider: DataProvider = {
 
       if (!p || p.mode === "off") {
         qs.set("skip", "0");
-        qs.set("limit", String(5000));
+        qs.set("limit", String(2000));
       } else {
         const limit = Math.max(1, Math.floor(p.pageSize ?? 10));
         const currentPage = Math.max(1, Math.floor(p.currentPage ?? 1));
