@@ -1,4 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -275,6 +280,8 @@ type SalesHistoryGridProps = {
   compactTable?: boolean;
   /** Omit Export CSV (queue block). */
   hideExport?: boolean;
+  /** Extra controls shown before Export (e.g. Item summary link). */
+  toolbarExtra?: ReactNode;
 };
 
 export function SalesHistoryGrid({
@@ -287,6 +294,7 @@ export function SalesHistoryGrid({
   serverPagination,
   compactTable = false,
   hideExport = false,
+  toolbarExtra,
 }: SalesHistoryGridProps) {
   const queryClient = useQueryClient();
   const notification = useNotification();
@@ -596,17 +604,22 @@ export function SalesHistoryGrid({
       <Typography variant={compactTable ? "subtitle1" : "h5"} component="h1">
         {listTitle}
       </Typography>
-      {!hideExport && (
-        <Button
-          variant="outlined"
-          size="medium"
-          startIcon={<FileDownloadOutlinedIcon />}
-          disabled={gridRows.length === 0 || loading}
-          onClick={() => downloadSalesCsv(gridRows)}
-        >
-          Export
-        </Button>
-      )}
+      {!hideExport || toolbarExtra != null ? (
+        <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1}>
+          {toolbarExtra}
+          {!hideExport && (
+            <Button
+              variant="outlined"
+              size="medium"
+              startIcon={<FileDownloadOutlinedIcon />}
+              disabled={gridRows.length === 0 || loading}
+              onClick={() => downloadSalesCsv(gridRows)}
+            >
+              Export
+            </Button>
+          )}
+        </Stack>
+      ) : null}
     </Stack>
   );
 
