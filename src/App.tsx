@@ -40,6 +40,7 @@ import { LoginPage } from "./pages/login/index";
 import { SessionExpiredPage } from "./pages/session-expired/index";
 import { ReportsPage } from "./pages/reports/index";
 import { ProductsManagementPage } from "./pages/products-management/index";
+import { AppLayoutHeader } from "./components/AppLayoutHeader";
 import { SiderLogoutButton } from "./components/SiderLogoutButton";
 
 const BRAND_ICON_SRC = "/nannu-milk-icon.png";
@@ -162,6 +163,7 @@ function App() {
                       <Authenticated key="main" redirectOnFail="/login">
                         <ThemedLayout
                           initialSiderCollapsed
+                          Header={AppLayoutHeader}
                           Title={({ collapsed }) => (
                             <AppTitle collapsed={collapsed} />
                           )}
