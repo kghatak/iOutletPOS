@@ -303,36 +303,28 @@ export const ProductList = () => {
           pr: isDesktop && showCart ? 1.5 : 0,
         }}
       >
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          justifyContent="space-between"
-          alignItems={{ xs: "stretch", sm: "center" }}
-          spacing={2}
-          mb={3}
-        >
-          <Typography variant="h6" component="h1" sx={{ fontWeight: 600, fontSize: "1rem" }}>
-            Products
-          </Typography>
+        <Box sx={{ mb: 3, maxWidth: { xs: "100%", sm: 400 } }}>
           <TextField
-            size="small"
+            fullWidth
+            size="medium"
             placeholder="Search by name"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             sx={{
-              minWidth: 200,
-              "& .MuiInputBase-input": { fontSize: "0.8rem", py: 0.75 },
+              "& .MuiInputBase-input": { fontSize: "0.95rem", py: 1.1 },
+              "& .MuiInputBase-root": { minHeight: 44 },
             }}
             slotProps={{
               input: {
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon fontSize="small" color="action" />
+                    <SearchIcon fontSize="medium" color="action" />
                   </InputAdornment>
                 ),
               },
             }}
           />
-        </Stack>
+        </Box>
 
         <Grid container spacing={1.25}>
           {products.map((product: Product) => (
