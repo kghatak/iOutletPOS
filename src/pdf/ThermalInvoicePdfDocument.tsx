@@ -157,7 +157,7 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
     subtotal,
     discount: totalDiscount,
     total,
-    paymentMode: _paymentMode,
+    paymentMode,
   } = data;
 
   const grossMerchandise = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
@@ -187,6 +187,7 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
     const outletInfo = getSessionOutletPrintInfo();
     const displayOutletAddress = outletInfo.address || "Village Buchi, Pundri, Kaithal";
     const displayOutletContact = outletInfo.primaryPhoneNumber || "98127-12739, 92559-19666";
+    const paymentLabel = typeof paymentMode === "string" ? paymentMode.trim() : "";
 
     return (
       <Document>
@@ -254,6 +255,11 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
               Grand Total: ₹{fmtInrPdf(netPayable)}
             </Text>
           </View>
+          {paymentLabel ? (
+            <Text style={[retail3.metaSingle, { textAlign: "center", fontWeight: "bold" }]}>
+              Payment Mode: {paymentLabel}
+            </Text>
+          ) : null}
           <View style={retail3.rule} />
 
           <Text style={retail3.foot}>Thanks & visit again...!!!</Text>
