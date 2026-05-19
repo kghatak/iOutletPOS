@@ -32,13 +32,18 @@ import {
   parseInrAmountString,
   parseQtyInputString,
 } from "../types/cart";
-import { API_BASE_URL } from "../config";
 import { getApiHeaders, getSessionCashierName } from "../providers/authProvider";
 import {
   printThermalInvoice,
   type InvoiceData,
 } from "../utils/thermalInvoice";
 import { enqueueOrder, removeFromQueue } from "../utils/offlineQueue";
+import {
+  extractCreatedSaleId,
+  extractSalesCreateFailureHint,
+  getSalesCreatePostUrl,
+  isSalesCreateResponseSuccess,
+} from "../utils/salesCreate";
 
 const compactInputSx = {
   "& .MuiInputBase-root": { fontSize: "0.72rem" },
@@ -408,35 +413,34 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
     setSubmitting(true);
     try {
       // Always enqueue first — guarantees the order is never lost
-      const queued = enqueueOrder(payload as Record<string, unknown>, {
-        ...invoiceData,
-        invoiceNo: `LOCAL-${Date.now()}`,
-      });
+      const queued = enqueueOrder(payload as Record<string, unknown>, invoiceData);
       invoiceData.invoiceNo = queued.localId;
 
       let syncedOk = false;
+      let networkFailure = false;
+      let syncFailureHint = "";
       try {
-        const res = await fetch(`${API_BASE_URL}/sales`, {
+        const res = await fetch(getSalesCreatePostUrl(), {
           method: "POST",
           headers: getApiHeaders(),
           body: JSON.stringify(payload),
         });
-        const body = await res.json().catch(() => null);
+        const body: unknown = await res.json().catch(() => null);
 
-        if (res.ok && body?.success !== false) {
-          const saleId = body?.data?.saleId ?? body?.data?.id ?? body?.saleId ?? body?.id ?? "";
+        if (isSalesCreateResponseSuccess(res, body)) {
+          const saleId = extractCreatedSaleId(body);
           removeFromQueue(queued.localId);
-          invoiceData.invoiceNo = saleId ? String(saleId) : queued.localId;
+          invoiceData.invoiceNo = saleId || invoiceData.invoiceNo;
           syncedOk = true;
           await queryClient.invalidateQueries({
             queryKey: keys().data().resource("sales").action("list").get(),
           });
         } else {
-          const serverMsg = (body as Record<string, unknown> | null)?.message ?? `Server returned ${res.status}`;
-          console.error("Order API error:", serverMsg, payload);
+          syncFailureHint = extractSalesCreateFailureHint(res, body);
+          console.error("Order API not accepted:", syncFailureHint, body);
         }
       } catch {
-        // Network offline — order stays in queue, will be retried
+        networkFailure = true;
       }
 
       setLastOrder(invoiceData);
@@ -449,10 +453,20 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       setCashReceived("");
       onOrderPlaced?.();
 
+      const offlineDescription = networkFailure
+        ? "Could not reach the server. Saved on this device — will retry when the connection works."
+        : syncFailureHint
+          ? `${syncFailureHint} Saved on this device; sync will retry.`
+          : "It will sync automatically when connected.";
+
       notification.open?.(
         syncedOk
           ? { type: "success", message: "Order placed!", description: "You can now print the invoice." }
-          : { type: "success", message: "Order saved offline", description: "It will sync automatically when connected." },
+          : {
+              type: "success",
+              message: networkFailure ? "Order saved offline" : "Order saved on this device",
+              description: offlineDescription,
+            },
       );
     } finally {
       setSubmitting(false);

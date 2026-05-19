@@ -1,4 +1,5 @@
 import type { BaseRecord } from "@refinedev/core";
+import { getSessionCashierName } from "../providers/authProvider";
 
 /**
  * Shape is normalized from `GET /Sales`; extra fields are allowed for varying APIs.
@@ -235,6 +236,11 @@ export function getSalePaymentMode(record: SaleRecord): string | undefined {
   const p = record.paymentMode ?? record.PaymentMode;
   if (typeof p === "string" && p.trim()) return p.trim();
   return undefined;
+}
+
+/** Staff name for employee report — best-effort from API fields. */
+export function getSaleBillerName(record: SaleRecord): string {
+  return getSessionCashierName()?.trim() || "Unassigned";
 }
 
 /** True when the sale was recorded as credit / buy-now-pay-later (`Due`). */
