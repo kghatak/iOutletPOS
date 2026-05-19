@@ -1,5 +1,8 @@
-import { API_BASE_URL } from "../config";
 import { getApiHeaders } from "../providers/authProvider";
+import {
+  getSalesCreatePostUrl,
+  isSalesCreateResponseSuccess,
+} from "./salesCreate";
 import { getPendingOrders, removeFromQueue, updateQueueEntry } from "./offlineQueue";
 
 const MAX_RETRIES = 3;
@@ -17,12 +20,13 @@ async function trySyncOne(
   payload: Record<string, unknown>,
 ): Promise<boolean> {
   try {
-    const res = await fetch(`${API_BASE_URL}/sales`, {
+    const res = await fetch(getSalesCreatePostUrl(), {
       method: "POST",
       headers: getApiHeaders(),
       body: JSON.stringify(payload),
     });
-    if (res.ok) {
+    const body: unknown = await res.json().catch(() => null);
+    if (isSalesCreateResponseSuccess(res, body)) {
       removeFromQueue(localId);
       return true;
     }

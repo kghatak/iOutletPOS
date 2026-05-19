@@ -34,6 +34,7 @@ import { CartProvider } from "./context/cart-context";
 import { ProductList } from "./pages/products/list";
 import { SalesPage } from "./pages/sales/index";
 import { SalesItemSummaryPage } from "./pages/sales/item-summary";
+import { SalesEmployeeReportPage } from "./pages/sales/employee-report";
 import { ExpensePage } from "./pages/expenses/index";
 import { ExpenseDateViewPage } from "./pages/expenses/expense-view";
 import { LoginPage } from "./pages/login/index";
@@ -193,6 +194,7 @@ function App() {
                     <Route path="/products" element={<ProductList />} />
                     <Route path="/products-management" element={<ProductsManagementPage />} />
                     <Route path="/sales/item-summary" element={<SalesItemSummaryPage />} />
+                    <Route path="/sales/employee-report" element={<SalesEmployeeReportPage />} />
                     <Route path="/sales" element={<SalesPage />} />
                     <Route path="/cart" element={<Navigate to="/products" replace />} />
                     <Route path="/expenses/:dateKey/view" element={<ExpenseDateViewPage />} />

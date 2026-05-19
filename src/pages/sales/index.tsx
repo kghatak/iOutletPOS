@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
@@ -227,15 +228,26 @@ export const SalesPage = () => {
         dueCollectionMode={salesView === "due"}
         listTitle={salesView === "due" ? "Outstanding due" : "Sales"}
         toolbarExtra={(
-          <Button
-            variant="outlined"
-            size="medium"
-            component={Link}
-            to="/sales/item-summary"
-            startIcon={<Inventory2OutlinedIcon />}
-          >
-            Item summary
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+            <Button
+              variant="outlined"
+              size="medium"
+              component={Link}
+              to="/sales/employee-report"
+              startIcon={<GroupsOutlinedIcon />}
+            >
+              Employee Report
+            </Button>
+            <Button
+              variant="outlined"
+              size="medium"
+              component={Link}
+              to="/sales/item-summary"
+              startIcon={<Inventory2OutlinedIcon />}
+            >
+              Item summary
+            </Button>
+          </Stack>
         )}
         serverPagination={{
           rowCount: totalFromApi,

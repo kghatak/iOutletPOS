@@ -26,8 +26,11 @@ import {
   lineSubtotal,
   parseQtyInputString,
 } from "../../types/cart";
-import { API_BASE_URL } from "../../config";
 import { getApiHeaders } from "../../providers/authProvider";
+import {
+  getSalesCreatePostUrl,
+  isSalesCreateResponseSuccess,
+} from "../../utils/salesCreate";
 
 function CartQtyField({
   line,
@@ -117,14 +120,14 @@ export const CartPage = () => {
 
     setSubmitting(true);
     try {
-      const url = `${API_BASE_URL}/sales`;
-      const res = await fetch(url, {
+      const res = await fetch(getSalesCreatePostUrl(), {
         method: "POST",
         headers: getApiHeaders(),
         body: JSON.stringify(payload),
       });
+      const body: unknown = await res.json().catch(() => null);
 
-      if (res.ok) {
+      if (isSalesCreateResponseSuccess(res, body)) {
         notification.open?.({
           type: "success",
           message: "Order placed",
