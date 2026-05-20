@@ -232,6 +232,37 @@ export function getSaleOrderDiscount(
   return undefined;
 }
 
+/** Numeric discount in ₹ for sorting, CSV, and aggregates. */
+export function getSaleDiscountAmountRupees(
+  discount: SaleOrderDiscount | undefined,
+): number {
+  if (discount == null) return 0;
+  if (typeof discount === "number") {
+    return Number.isFinite(discount) ? Math.max(0, discount) : 0;
+  }
+  if (typeof discount === "object") {
+    const amt = discount.amount;
+    if (typeof amt === "number" && Number.isFinite(amt)) return Math.max(0, amt);
+  }
+  return 0;
+}
+
+/** Grid / list label for order discount (minus rupees; optional % hint). */
+export function formatSaleGridDiscountCell(
+  discount: SaleOrderDiscount | undefined,
+): string {
+  const rupees = getSaleDiscountAmountRupees(discount);
+  if (rupees <= 0) return "—";
+  const pctSuffix =
+    typeof discount === "object" &&
+    discount != null &&
+    discount.type === "%" &&
+    typeof discount.value === "number"
+      ? ` (${discount.value}%)`
+      : "";
+  return `${formatRupeeInr(rupees)}${pctSuffix}`;
+}
+
 export function getSalePaymentMode(record: SaleRecord): string | undefined {
   const p = record.paymentMode ?? record.PaymentMode;
   if (typeof p === "string" && p.trim()) return p.trim();
