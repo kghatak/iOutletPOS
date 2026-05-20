@@ -26,11 +26,14 @@ import {
   lineSubtotal,
   parseQtyInputString,
 } from "../../types/cart";
-import { getApiHeaders } from "../../providers/authProvider";
+import { getApiHeaders, getSessionCashierName } from "../../providers/authProvider";
 import {
+  extractCreatedSaleId,
   getSalesCreatePostUrl,
   isSalesCreateResponseSuccess,
 } from "../../utils/salesCreate";
+import type { InvoiceData } from "../../types/thermalInvoice";
+import { invoiceReceiptStamp, printThermalInvoice } from "../../utils/thermalInvoice";
 
 function CartQtyField({
   line,
@@ -128,10 +131,33 @@ export const CartPage = () => {
       const body: unknown = await res.json().catch(() => null);
 
       if (isSalesCreateResponseSuccess(res, body)) {
+        const saleIdRaw = extractCreatedSaleId(body);
+        const invoiceNo =
+          saleIdRaw.trim().length === 0
+            ? "—"
+            : saleIdRaw.startsWith("#")
+              ? saleIdRaw
+              : `#${saleIdRaw}`;
+        const { date: receiptDate, billTime } = invoiceReceiptStamp();
+        const items = cartLinesToSalePayloadItems(lines);
+        const invoiceData: InvoiceData = {
+          invoiceNo,
+          date: receiptDate,
+          billTime,
+          cashierName: getSessionCashierName(),
+          customerName: customerName.trim() || undefined,
+          customerPhone: customerPhone.trim() || undefined,
+          customerAddress: customerAddress.trim() || undefined,
+          items,
+          subtotal: total,
+          total,
+          orderType: "Pick Up",
+        };
+        void printThermalInvoice(invoiceData).catch(console.error);
+
         notification.open?.({
           type: "success",
           message: "Order placed",
-          description: "The order was submitted successfully.",
         });
         clear();
         setCustomerName("");
