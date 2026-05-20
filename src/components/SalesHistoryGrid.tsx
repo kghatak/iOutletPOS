@@ -32,7 +32,12 @@ import { keys, useNotification } from "@refinedev/core";
 import { buildSaleUpdatePayload, patchSale } from "../api/saleUpdate";
 import { useOutlet } from "../context/outlet-context";
 import type { SalesGridRow } from "../types/sale";
-import { formatRupeeInr, isSalePaymentDue } from "../types/sale";
+import {
+  formatRupeeInr,
+  formatSaleGridDiscountCell,
+  getSaleDiscountAmountRupees,
+  isSalePaymentDue,
+} from "../types/sale";
 import { printThermalInvoice } from "../utils/thermalInvoice";
 import type { InvoiceData } from "../types/thermalInvoice";
 import { EditSaleDialog } from "./EditSaleDialog";
@@ -73,13 +78,21 @@ function escapeCsvField(s: string): string {
 }
 
 function downloadSalesCsv(rows: SalesGridRow[]) {
-  const headers = ["salesId", "Products", "Items Count", "Amount", "CreatedAt"];
+  const headers = [
+    "salesId",
+    "Products",
+    "Items Count",
+    "Discount",
+    "Amount",
+    "CreatedAt",
+  ];
   const body = rows
     .map((r) =>
       [
         escapeCsvField(r.salesId),
         escapeCsvField(r.products),
         String(r.itemsCount),
+        String(getSaleDiscountAmountRupees(r.discount)),
         String(r.amount),
         escapeCsvField(r.createdAt),
       ].join(","),
@@ -405,8 +418,8 @@ export function SalesHistoryGrid({
       {
         field: "salesId",
         headerName: "salesId",
-        flex: 1,
-        minWidth: 120,
+        flex: 0.5,
+        minWidth: 80,
         renderCell: (params) => {
           const row = params.row;
           if (row.syncFailed) {
@@ -437,17 +450,17 @@ export function SalesHistoryGrid({
       {
         field: "products",
         headerName: "Products",
-        flex: 2,
-        minWidth: 140,
+        flex: 0.6,
+        minWidth: 40,
       },
       {
         field: "itemsCount",
-        headerName: "Items Count",
-        flex: 0.6,
+        headerName: "Items",
+        flex: 0.3,
         minWidth: 80,
         type: "number",
-        align: "right",
-        headerAlign: "right",
+        align: "center",
+        headerAlign: "center",
       },
       ...(dueCollectionMode
         ? ([
@@ -511,7 +524,7 @@ export function SalesHistoryGrid({
             {
               field: "paymentMode",
               headerName: "Payment",
-              flex: 0.65,
+              flex: 0.5,
               minWidth: 96,
               sortable: false,
               renderCell: (params: { row: SalesGridRow }) => {
@@ -544,16 +557,31 @@ export function SalesHistoryGrid({
             },
           ] as GridColDef<SalesGridRow>[])),
       {
+        field: "discount",
+        headerName: "Discount",
+        flex: 0.5,
+        minWidth: 104,
+        align: "center",
+        headerAlign: "center",
+        type: "number",
+        valueGetter: (_, row) => getSaleDiscountAmountRupees(row.discount),
+        renderCell: (params) => (
+          <Typography variant="body2" sx={{ width: "100%", textAlign: "center" }}>
+            {formatSaleGridDiscountCell(params.row.discount)}
+          </Typography>
+        ),
+      },
+      {
         field: "amount",
         headerName: "Amount",
         flex: 0.8,
         minWidth: 90,
-        align: "right",
-        headerAlign: "right",
+        align: "center",
+        headerAlign: "center",
         type: "number",
         valueGetter: (_, row) => row.amount,
         renderCell: (params) => (
-          <Typography variant="body2" sx={{ width: "100%", textAlign: "right" }}>
+          <Typography variant="body2" sx={{ width: "100%", textAlign: "center" }}>
             {formatRupeeInr(params.row.amount)}
           </Typography>
         ),
@@ -562,7 +590,9 @@ export function SalesHistoryGrid({
         field: "createdAt",
         headerName: "CreatedAt",
         flex: 1.2,
-        minWidth: 130,
+        minWidth: 100,
+        align: "center",
+        headerAlign: "center",
         type: "number",
         valueGetter: (_, row) => saleRowSortTimestampMs(row),
         renderCell: (params) => (
