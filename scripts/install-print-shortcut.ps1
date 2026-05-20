@@ -10,8 +10,13 @@
   "Confirm & Place Order".
 
   Optional switches:
-    -Kiosk    : also add `--kiosk` (full-screen, no tabs / URL bar)
-    -Startup  : also create a shortcut in Startup so POS opens on boot
+    -Kiosk         : also add `--kiosk` (full-screen, no tabs / URL bar)
+    -Startup       : also create a shortcut in Startup so POS opens on boot
+    -SilentPolicy  : set Chrome / Edge enterprise policy
+                     `PrintPreviewDisabled = 1` (HKLM) so the print
+                     preview window never appears at all. Requires
+                     admin elevation; the script will re-launch itself
+                     elevated if necessary.
 
 .PARAMETER PosUrl
   The URL of the deployed POS app, e.g. https://pos.example.com or
@@ -45,7 +50,9 @@ param(
 
     [switch] $Kiosk,
 
-    [switch] $Startup
+    [switch] $Startup,
+
+    [switch] $SilentPolicy
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,6 +61,44 @@ function Write-Info($msg)    { Write-Host "  $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)      { Write-Host "  $msg" -ForegroundColor Green }
 function Write-WarnLine($msg){ Write-Host "  $msg" -ForegroundColor Yellow }
 function Write-Err($msg)     { Write-Host "  $msg" -ForegroundColor Red }
+
+function Test-IsElevated {
+    $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $p = New-Object System.Security.Principal.WindowsPrincipal($id)
+    return $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+function Restart-ElevatedAndExit {
+    param([string[]] $OriginalArgs)
+    Write-WarnLine "Re-launching elevated (UAC prompt) to set Print Preview policy..."
+    $argString = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" " + ($OriginalArgs -join " ")
+    Start-Process -FilePath "powershell.exe" -ArgumentList $argString -Verb RunAs
+    exit 0
+}
+
+function Set-PrintPreviewPolicy {
+    # HKLM-level Chrome / Edge enterprise policy.
+    # Requires admin. Once set, the Print Preview window never appears
+    # for any window of that browser (with --kiosk-printing it prints
+    # silently to the default printer).
+    $policyTargets = @(
+        @{ Name = "Google Chrome"; Path = "HKLM:\SOFTWARE\Policies\Google\Chrome" },
+        @{ Name = "Microsoft Edge"; Path = "HKLM:\SOFTWARE\Policies\Microsoft\Edge" }
+    )
+
+    foreach ($t in $policyTargets) {
+        try {
+            if (-not (Test-Path $t.Path)) {
+                New-Item -Path $t.Path -Force | Out-Null
+            }
+            New-ItemProperty -Path $t.Path -Name "PrintPreviewDisabled" `
+                -Value 1 -PropertyType DWord -Force | Out-Null
+            Write-Ok "Policy set: $($t.Name) PrintPreviewDisabled = 1"
+        } catch {
+            Write-Err "Could not set policy for $($t.Name): $($_.Exception.Message)"
+        }
+    }
+}
 
 function Get-BrowserPath {
     param([string] $Which)
@@ -90,6 +135,15 @@ Write-Host ""
 Write-Host "iOutletPOS  -  Silent Print Shortcut Installer" -ForegroundColor White
 Write-Host "-----------------------------------------------" -ForegroundColor DarkGray
 
+# If -SilentPolicy was requested but we're not elevated, re-launch as admin.
+if ($SilentPolicy -and -not (Test-IsElevated)) {
+    $reArgs = @("-PosUrl `"$PosUrl`"", "-Name `"$Name`"", "-Browser $Browser")
+    if ($Kiosk)        { $reArgs += "-Kiosk" }
+    if ($Startup)      { $reArgs += "-Startup" }
+    if ($SilentPolicy) { $reArgs += "-SilentPolicy" }
+    Restart-ElevatedAndExit -OriginalArgs $reArgs
+}
+
 $browserPath = Get-BrowserPath -Which $Browser
 if (-not $browserPath) {
     Write-Err "Could not find Chrome or Edge on this PC."
@@ -109,6 +163,16 @@ if (-not (Test-Path $userDataDir)) {
     New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
 }
 
+# --kiosk-printing : skip the print dialog (send to default printer).
+#                    By itself this still flashes Print Preview for ~1s
+#                    while it auto-confirms.
+#
+# --disable-print-preview is intentionally NOT included by default.
+# That flag is only useful in combination with the matching enterprise
+# policy `PrintPreviewDisabled` (added when -SilentPolicy is passed);
+# without the policy, Chrome falls back to the system print dialog
+# which `--kiosk-printing` does NOT auto-confirm — i.e. printing stops
+# until the user clicks Print. We add it only when -SilentPolicy is set.
 $argList = @(
     "--kiosk-printing",
     "--no-first-run",
@@ -116,6 +180,9 @@ $argList = @(
     "--disable-features=TranslateUI",
     "--user-data-dir=`"$userDataDir`""
 )
+if ($SilentPolicy) {
+    $argList += "--disable-print-preview"
+}
 
 if ($Kiosk) {
     $argList += "--kiosk"
@@ -181,6 +248,13 @@ if ($defaultPrinter) {
     Write-Err "No Windows default printer detected."
     Write-WarnLine "Set your thermal printer as default in:"
     Write-WarnLine "  Settings -> Bluetooth & devices -> Printers & scanners -> (printer) -> Set as default."
+}
+
+if ($SilentPolicy) {
+    Write-Host ""
+    Write-Host "Applying Print Preview policy (no preview flash)" -ForegroundColor White
+    Set-PrintPreviewPolicy
+    Write-WarnLine "Close all Chrome / Edge windows and re-open the POS shortcut for the policy to take effect."
 }
 
 Write-Host ""
