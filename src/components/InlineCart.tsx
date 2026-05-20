@@ -34,6 +34,7 @@ import {
 } from "../types/cart";
 import { getApiHeaders, getSessionCashierName } from "../providers/authProvider";
 import {
+  invoiceReceiptStamp,
   printThermalInvoice,
   type InvoiceData,
 } from "../utils/thermalInvoice";
@@ -274,19 +275,6 @@ function CartLineRow({
   );
 }
 
-function formatInvoiceDate(): string {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}-${mm}-${d.getFullYear()}`;
-}
-
-function formatInvoiceBillTime(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-
 export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () => void; onNewOrder?: () => void }) {
   const queryClient = useQueryClient();
   const notification = useNotification();
@@ -394,9 +382,10 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       paymentMode,
     };
 
+    const { date: receiptDate, billTime } = invoiceReceiptStamp();
     const invoiceData: InvoiceData = {
       invoiceNo: "",
-      date: formatInvoiceDate(),
+      date: receiptDate,
       customerName: trimmedCustomerName || undefined,
       customerPhone: trimmedCustomerPhone || undefined,
       customerAddress: customerAddress.trim() || undefined,
@@ -406,7 +395,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       total: finalTotal,
       paymentMode,
       orderType: "Pick Up",
-      billTime: formatInvoiceBillTime(),
+      billTime,
       cashierName: getSessionCashierName(),
     };
 
@@ -443,6 +432,8 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         networkFailure = true;
       }
 
+      void printThermalInvoice(invoiceData).catch(console.error);
+
       setLastOrder(invoiceData);
       setSavedOffline(!syncedOk);
       clear();
@@ -461,7 +452,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
       notification.open?.(
         syncedOk
-          ? { type: "success", message: "Order placed!", description: "You can now print the invoice." }
+          ? { type: "success", message: "Order placed!" }
           : {
               type: "success",
               message: networkFailure ? "Order saved offline" : "Order saved on this device",
