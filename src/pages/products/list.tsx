@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useList, useNotification } from "@refinedev/core";
+import { useList } from "@refinedev/core";
 import { useNavigate } from "react-router";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
@@ -34,7 +34,6 @@ import { InlineCart } from "../../components/InlineCart";
 const CART_WIDTH = 370;
 
 function ProductCard({ product }: { product: Product }) {
-  const notification = useNotification();
   const { lines, addProductQuantity, setQuantity } = useCart();
   const productId = product.productId ?? product.id;
   const line = lines.find((l) => l.productId === productId);
@@ -86,11 +85,6 @@ function ProductCard({ product }: { product: Product }) {
 
   const onAddFirst = () => {
     addProductQuantity(product, 1);
-    notification.open?.({
-      type: "success",
-      message: "Added to cart",
-      description: `1 × ${product.name}`,
-    });
   };
 
   const atMax = stockCap != null && line != null && line.quantity >= stockCap;
