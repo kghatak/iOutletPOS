@@ -284,7 +284,8 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  /** `false` while idle; otherwise tracks which CTA was clicked so we can label it. */
+  const [submitting, setSubmitting] = useState<false | "print" | "new">(false);
 
   const [discountType, setDiscountType] = useState<"%" | "₹">("₹");
   const [discountInput, setDiscountInput] = useState("");
@@ -346,7 +347,11 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       paymentMode === "Due") &&
     (paymentMode !== "Due" || dueCustomerComplete);
 
-  const handlePlaceOrder = async () => {
+  /**
+   * `mode === "print"` → save + auto-print receipt + show success screen with reprint.
+   * `mode === "new"`   → save only; skip print and skip success screen; go straight to a fresh order.
+   */
+  const handlePlaceOrder = async (mode: "print" | "new") => {
     if (lines.length === 0) {
       notification.open?.({ type: "error", message: "Cart is empty" });
       return;
@@ -399,15 +404,13 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       cashierName: getSessionCashierName(),
     };
 
-    setSubmitting(true);
+    setSubmitting(mode);
     try {
       // Always enqueue first — guarantees the order is never lost
       const queued = enqueueOrder(payload as Record<string, unknown>, invoiceData);
       invoiceData.invoiceNo = queued.localId;
 
       let syncedOk = false;
-      let networkFailure = false;
-      let syncFailureHint = "";
       try {
         const res = await fetch(getSalesCreatePostUrl(), {
           method: "POST",
@@ -425,17 +428,24 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             queryKey: keys().data().resource("sales").action("list").get(),
           });
         } else {
-          syncFailureHint = extractSalesCreateFailureHint(res, body);
-          console.error("Order API not accepted:", syncFailureHint, body);
+          const hint = extractSalesCreateFailureHint(res, body);
+          console.error("Order API not accepted:", hint, body);
         }
-      } catch {
-        networkFailure = true;
+      } catch (err) {
+        console.error("Order create network error — kept in offline queue:", err);
       }
 
-      void printThermalInvoice(invoiceData).catch(console.error);
+      if (mode === "print") {
+        void printThermalInvoice(invoiceData).catch(console.error);
+        setLastOrder(invoiceData);
+        setSavedOffline(!syncedOk);
+      } else {
+        // "Save & New Order": no receipt, no success screen — go straight to a fresh cart.
+        setLastOrder(null);
+        setSavedOffline(false);
+        setPaymentMode("Cash");
+      }
 
-      setLastOrder(invoiceData);
-      setSavedOffline(!syncedOk);
       clear();
       setCustomerName("");
       setCustomerPhone("");
@@ -443,22 +453,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       setDiscountInput("");
       setCashReceived("");
       onOrderPlaced?.();
-
-      const offlineDescription = networkFailure
-        ? "Could not reach the server. Saved on this device — will retry when the connection works."
-        : syncFailureHint
-          ? `${syncFailureHint} Saved on this device; sync will retry.`
-          : "It will sync automatically when connected.";
-
-      notification.open?.(
-        syncedOk
-          ? { type: "success", message: "Order placed!" }
-          : {
-              type: "success",
-              message: networkFailure ? "Order saved offline" : "Order saved on this device",
-              description: offlineDescription,
-            },
-      );
+      if (mode === "new") onNewOrder?.();
     } finally {
       setSubmitting(false);
     }
@@ -545,6 +540,51 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         </Box>
       ) : (
         <>
+          <Stack
+            direction="row"
+            spacing={0.85}
+            sx={{ flexShrink: 0, mb: 1 }}
+          >
+            <Button
+              variant="contained"
+              size="small"
+              fullWidth
+              disabled={submitting !== false || !canPlaceOrder}
+              startIcon={<PrintIcon sx={{ fontSize: "1.05rem" }} />}
+              onClick={() => handlePlaceOrder("print")}
+              sx={{
+                py: 0.85,
+                fontWeight: 700,
+                fontSize: "0.7rem",
+                bgcolor: "#ef6c00",
+                "&:hover": { bgcolor: "#e65100" },
+              }}
+            >
+              {submitting === "print" ? "Saving…" : "Save & Print"}
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              fullWidth
+              disabled={submitting !== false || !canPlaceOrder}
+              startIcon={<ShoppingCartCheckoutIcon sx={{ fontSize: "1.05rem" }} />}
+              onClick={() => handlePlaceOrder("new")}
+              sx={{
+                py: 0.85,
+                fontWeight: 700,
+                fontSize: "0.5rem",
+                color: "#ef6c00",
+                borderColor: "#ef6c00",
+                "&:hover": {
+                  borderColor: "#e65100",
+                  bgcolor: "rgba(239,108,0,0.06)",
+                },
+              }}
+            >
+              {submitting === "new" ? "Saving…" : "Save & New Order"}
+            </Button>
+          </Stack>
+
           <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, mb: 1 }}>
             <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15 }}>
               <Typography variant="caption" color="text.secondary" gutterBottom display="block" sx={{ fontSize: "0.625rem" }}>
@@ -739,25 +779,6 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           )}
 
           </Box>
-
-          <Button
-            variant="contained"
-            fullWidth
-            size="small"
-            disabled={submitting || !canPlaceOrder}
-            startIcon={<ShoppingCartCheckoutIcon sx={{ fontSize: "1.15rem" }} />}
-            onClick={handlePlaceOrder}
-            sx={{
-              flexShrink: 0,
-              py: 0.85,
-              fontWeight: 700,
-              fontSize: "0.72rem",
-              bgcolor: "#ef6c00",
-              "&:hover": { bgcolor: "#e65100" },
-            }}
-          >
-            {submitting ? "Placing order…" : "Confirm & Place Order"}
-          </Button>
         </>
       )}
     </Box>

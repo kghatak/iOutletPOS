@@ -15,6 +15,8 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import PrintIcon from "@mui/icons-material/Print";
+import ShoppingCartCheckoutIcon from "@mui/icons-material/ShoppingCartCheckout";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys, useNotification } from "@refinedev/core";
 import { useCart } from "../../context/cart-context";
@@ -98,9 +100,14 @@ export const CartPage = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [submitting, setSubmitting] = useState<false | "print" | "new">(false);
 
-  const handlePlaceOrder = async () => {
+  /**
+   * `mode === "print"` → save + print receipt (current behavior).
+   * `mode === "new"`   → save only; skip the print step for walk-in customers
+   *                       who don't want a receipt.
+   */
+  const handlePlaceOrder = async (mode: "print" | "new") => {
     if (lines.length === 0) {
       notification.open?.({
         type: "error",
@@ -121,7 +128,7 @@ export const CartPage = () => {
       total,
     };
 
-    setSubmitting(true);
+    setSubmitting(mode);
     try {
       const res = await fetch(getSalesCreatePostUrl(), {
         method: "POST",
@@ -153,12 +160,9 @@ export const CartPage = () => {
           total,
           orderType: "Pick Up",
         };
-        void printThermalInvoice(invoiceData).catch(console.error);
-
-        notification.open?.({
-          type: "success",
-          message: "Order placed",
-        });
+        if (mode === "print") {
+          void printThermalInvoice(invoiceData).catch(console.error);
+        }
         clear();
         setCustomerName("");
         setCustomerPhone("");
@@ -291,14 +295,24 @@ export const CartPage = () => {
         </Stack>
       </Paper>
 
-      <Stack direction="row" spacing={2} justifyContent="flex-end">
+      <Stack direction="row" spacing={2} justifyContent="flex-end" flexWrap="wrap">
         <Button
           variant="contained"
           size="large"
-          disabled={lines.length === 0 || submitting}
-          onClick={handlePlaceOrder}
+          startIcon={<PrintIcon />}
+          disabled={lines.length === 0 || submitting !== false}
+          onClick={() => handlePlaceOrder("print")}
         >
-          {submitting ? "Placing…" : "Confirm & place order"}
+          {submitting === "print" ? "Saving…" : "Save & Print"}
+        </Button>
+        <Button
+          variant="outlined"
+          size="large"
+          startIcon={<ShoppingCartCheckoutIcon />}
+          disabled={lines.length === 0 || submitting !== false}
+          onClick={() => handlePlaceOrder("new")}
+        >
+          {submitting === "new" ? "Saving…" : "Save & New Order"}
         </Button>
       </Stack>
     </Box>
