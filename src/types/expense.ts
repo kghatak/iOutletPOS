@@ -8,6 +8,9 @@ export const EXPENSE_CATEGORIES = [
   { value: "supplies", label: "Supplies" },
   { value: "maintenance", label: "Maintenance" },
   { value: "transport", label: "Transport" },
+  { value: "staff_food", label: "Staff Food" },
+  { value: "petrol", label: "Petrol" },
+  { value: "packing_materials", label: "Packing Materials" },
   { value: "other", label: "Other" },
 ] as const;
 
