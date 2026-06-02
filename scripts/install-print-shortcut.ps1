@@ -9,9 +9,18 @@
   which is exactly what `printThermalInvoice` calls after every
   "Confirm & Place Order".
 
+  The shortcut opens Chrome in a normal maximised window (no tab bar,
+  no URL bar via --app=) so staff can still:
+    - Alt+Tab to other apps
+    - See the Windows taskbar
+    - Close the window with Alt+F4 or the X button
+    - Minimise / resize as needed
+
   Optional switches:
-    -Kiosk         : also add `--kiosk` (full-screen, no tabs / URL bar)
-    -Startup       : also create a shortcut in Startup so POS opens on boot
+    -Startup       : create a Startup shortcut so POS opens on boot.
+    -Kiosk         : FULL LOCKDOWN — hides taskbar, blocks Alt+Tab,
+                     no close button. Only for dedicated public kiosks.
+                     Staff will need Alt+F4 or Ctrl+Alt+Delete to exit.
     -SilentPolicy  : set Chrome / Edge enterprise policy
                      `PrintPreviewDisabled = 1` (HKLM) so the print
                      preview window never appears at all. Requires
@@ -30,12 +39,16 @@
   `auto` picks Chrome if installed, else Edge.
 
 .EXAMPLE
-  # Run from PowerShell (no admin needed):
-  .\install-print-shortcut.ps1 -PosUrl "https://pos.example.com"
+  # Recommended for shop POS (silent print, staff can still switch apps):
+  .\install-print-shortcut.ps1 -PosUrl "https://pos.example.com" -SilentPolicy
 
 .EXAMPLE
-  # Full-screen kiosk + auto-launch on boot:
-  .\install-print-shortcut.ps1 -PosUrl "https://pos.example.com" -Kiosk -Startup
+  # Auto-launch on boot:
+  .\install-print-shortcut.ps1 -PosUrl "https://pos.example.com" -SilentPolicy -Startup
+
+.EXAMPLE
+  # FULL KIOSK lockdown (dedicated public terminal only — not recommended for staff):
+  .\install-print-shortcut.ps1 -PosUrl "https://pos.example.com" -SilentPolicy -Startup -Kiosk
 #>
 
 [CmdletBinding()]
@@ -48,11 +61,11 @@ param(
     [ValidateSet("auto", "chrome", "edge")]
     [string] $Browser = "auto",
 
-    [switch] $Kiosk,
-
     [switch] $Startup,
 
-    [switch] $SilentPolicy
+    [switch] $SilentPolicy,
+
+    [switch] $Kiosk
 )
 
 $ErrorActionPreference = "Stop"
@@ -77,15 +90,10 @@ function Restart-ElevatedAndExit {
 }
 
 function Set-PrintPreviewPolicy {
-    # HKLM-level Chrome / Edge enterprise policy.
-    # Requires admin. Once set, the Print Preview window never appears
-    # for any window of that browser (with --kiosk-printing it prints
-    # silently to the default printer).
     $policyTargets = @(
         @{ Name = "Google Chrome"; Path = "HKLM:\SOFTWARE\Policies\Google\Chrome" },
         @{ Name = "Microsoft Edge"; Path = "HKLM:\SOFTWARE\Policies\Microsoft\Edge" }
     )
-
     foreach ($t in $policyTargets) {
         try {
             if (-not (Test-Path $t.Path)) {
@@ -102,7 +110,6 @@ function Set-PrintPreviewPolicy {
 
 function Get-BrowserPath {
     param([string] $Which)
-
     $chromeCandidates = @(
         "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
         "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
@@ -112,35 +119,39 @@ function Get-BrowserPath {
         "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
         "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
     )
-
     function Find-First($paths) {
         foreach ($p in $paths) {
             if (-not [string]::IsNullOrWhiteSpace($p) -and (Test-Path $p)) { return $p }
         }
         return $null
     }
-
     switch ($Which) {
         "chrome" { return Find-First $chromeCandidates }
         "edge"   { return Find-First $edgeCandidates }
-        default {
-            $c = Find-First $chromeCandidates
-            if ($c) { return $c }
-            return Find-First $edgeCandidates
-        }
+        default  { $c = Find-First $chromeCandidates; if ($c) { return $c }; return Find-First $edgeCandidates }
     }
 }
 
+# ── Banner ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "iOutletPOS  -  Silent Print Shortcut Installer" -ForegroundColor White
 Write-Host "-----------------------------------------------" -ForegroundColor DarkGray
 
-# If -SilentPolicy was requested but we're not elevated, re-launch as admin.
+if ($Kiosk) {
+    Write-Host ""
+    Write-WarnLine "WARNING: -Kiosk was passed."
+    Write-WarnLine "This enables FULL SCREEN LOCKDOWN mode."
+    Write-WarnLine "Staff will NOT be able to see the taskbar, Alt+Tab, or close the window normally."
+    Write-WarnLine "Only use -Kiosk for a dedicated public terminal."
+    Write-WarnLine "To exit kiosk mode: press Alt+F4, or Ctrl+Alt+Delete -> Task Manager -> End Task."
+    Write-Host ""
+}
+
+# Elevate if -SilentPolicy needs it
 if ($SilentPolicy -and -not (Test-IsElevated)) {
-    $reArgs = @("-PosUrl `"$PosUrl`"", "-Name `"$Name`"", "-Browser $Browser")
-    if ($Kiosk)        { $reArgs += "-Kiosk" }
-    if ($Startup)      { $reArgs += "-Startup" }
-    if ($SilentPolicy) { $reArgs += "-SilentPolicy" }
+    $reArgs = @("-PosUrl `"$PosUrl`"", "-Name `"$Name`"", "-Browser $Browser", "-SilentPolicy")
+    if ($Startup) { $reArgs += "-Startup" }
+    if ($Kiosk)   { $reArgs += "-Kiosk" }
     Restart-ElevatedAndExit -OriginalArgs $reArgs
 }
 
@@ -155,44 +166,53 @@ $browserName = Split-Path $browserPath -Leaf
 Write-Info "Browser : $browserName"
 Write-Info "Path    : $browserPath"
 Write-Info "POS URL : $PosUrl"
+Write-Info "Mode    : $(if ($Kiosk) { 'FULL KIOSK (locked)' } else { 'App window (recommended)' })"
 
-# Build argument string: --kiosk-printing is required for silent printing.
-# A separate user-data dir keeps POS sessions isolated from a normal browser profile.
 $userDataDir = Join-Path $env:LOCALAPPDATA "iOutletPOS\BrowserProfile"
 if (-not (Test-Path $userDataDir)) {
     New-Item -ItemType Directory -Force -Path $userDataDir | Out-Null
 }
 
-# --kiosk-printing : skip the print dialog (send to default printer).
-#                    By itself this still flashes Print Preview for ~1s
-#                    while it auto-confirms.
-#
-# --disable-print-preview is intentionally NOT included by default.
-# That flag is only useful in combination with the matching enterprise
-# policy `PrintPreviewDisabled` (added when -SilentPolicy is passed);
-# without the policy, Chrome falls back to the system print dialog
-# which `--kiosk-printing` does NOT auto-confirm — i.e. printing stops
-# until the user clicks Print. We add it only when -SilentPolicy is set.
-$argList = @(
-    "--kiosk-printing",
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--disable-features=TranslateUI",
-    "--user-data-dir=`"$userDataDir`""
-)
+# ── Build Chrome flags ───────────────────────────────────────────────────────
+# --kiosk-printing  : silent print to default printer (no dialog).
+# --app=URL         : opens in a standalone window without tab bar / URL bar
+#                     but still allows Alt+Tab, taskbar, window controls.
+#                     (Only used when NOT in full kiosk mode.)
+# --kiosk           : full-screen lockdown. Added only when -Kiosk is set.
+
+if ($Kiosk) {
+    $argList = @(
+        "--kiosk-printing",
+        "--kiosk",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-features=TranslateUI",
+        "--user-data-dir=`"$userDataDir`""
+    )
+} else {
+    $argList = @(
+        "--kiosk-printing",
+        ("--app=" + $PosUrl),
+        "--start-maximized",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-features=TranslateUI",
+        "--user-data-dir=`"$userDataDir`""
+    )
+}
+
 if ($SilentPolicy) {
     $argList += "--disable-print-preview"
 }
 
+# URL is the navigation target — only needed when NOT using --app= (which already embeds it)
 if ($Kiosk) {
-    $argList += "--kiosk"
-    $argList += "--start-fullscreen"
+    $argList += $PosUrl
 }
 
-# URL must be last so the browser treats it as the navigation target.
-$argList += $PosUrl
 $argumentString = ($argList -join " ")
 
+# ── Create shortcuts ─────────────────────────────────────────────────────────
 function New-ShortcutFile {
     param(
         [Parameter(Mandatory)] [string] $LnkPath,
@@ -200,12 +220,10 @@ function New-ShortcutFile {
         [Parameter(Mandatory)] [string] $Args,
         [string] $Description = "iOutletPOS (silent print)"
     )
-
     $parent = Split-Path $LnkPath -Parent
     if (-not (Test-Path $parent)) {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
-
     $wsh = New-Object -ComObject WScript.Shell
     $sc = $wsh.CreateShortcut($LnkPath)
     $sc.TargetPath = $TargetPath
@@ -213,13 +231,12 @@ function New-ShortcutFile {
     $sc.WorkingDirectory = Split-Path $TargetPath -Parent
     $sc.Description = $Description
     $sc.IconLocation = "$TargetPath,0"
-    $sc.WindowStyle = 1
+    $sc.WindowStyle = if ($Kiosk) { 3 } else { 1 }
     $sc.Save()
 }
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $desktopLnk = Join-Path $desktop "$Name.lnk"
-
 New-ShortcutFile -LnkPath $desktopLnk -TargetPath $browserPath -Args $argumentString
 Write-Ok "Created desktop shortcut: $desktopLnk"
 
@@ -230,26 +247,7 @@ if ($Startup) {
     Write-Ok "Created Startup shortcut: $startupLnk"
 }
 
-# Detect Windows default printer so the user knows where prints will go.
-try {
-    $defaultPrinter = (Get-CimInstance -ClassName Win32_Printer -Filter "Default = TRUE" -ErrorAction Stop |
-        Select-Object -First 1 -ExpandProperty Name)
-} catch {
-    $defaultPrinter = $null
-}
-
-Write-Host ""
-Write-Host "Default printer check" -ForegroundColor White
-if ($defaultPrinter) {
-    Write-Info "Windows default printer : $defaultPrinter"
-    Write-WarnLine "Make sure this is your THERMAL receipt printer."
-    Write-WarnLine "Change via: Settings -> Bluetooth & devices -> Printers & scanners -> (printer) -> Set as default."
-} else {
-    Write-Err "No Windows default printer detected."
-    Write-WarnLine "Set your thermal printer as default in:"
-    Write-WarnLine "  Settings -> Bluetooth & devices -> Printers & scanners -> (printer) -> Set as default."
-}
-
+# ── Silent policy ────────────────────────────────────────────────────────────
 if ($SilentPolicy) {
     Write-Host ""
     Write-Host "Applying Print Preview policy (no preview flash)" -ForegroundColor White
@@ -257,7 +255,28 @@ if ($SilentPolicy) {
     Write-WarnLine "Close all Chrome / Edge windows and re-open the POS shortcut for the policy to take effect."
 }
 
+# ── Printer check ────────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "Default printer check" -ForegroundColor White
+try {
+    $defaultPrinter = (Get-CimInstance -ClassName Win32_Printer -Filter "Default = TRUE" -ErrorAction Stop |
+        Select-Object -First 1 -ExpandProperty Name)
+} catch {
+    $defaultPrinter = $null
+}
+if ($defaultPrinter) {
+    Write-Info "Windows default printer : $defaultPrinter"
+    Write-WarnLine "Make sure this is your THERMAL receipt printer."
+    Write-WarnLine "Change via: Settings -> Bluetooth & devices -> Printers & scanners -> (printer) -> Set as default."
+} else {
+    Write-Err "No Windows default printer detected."
+    Write-WarnLine "Set your thermal printer as default in Settings -> Printers & scanners."
+}
+
 Write-Host ""
 Write-Host "Done." -ForegroundColor Green
-Write-Host "  Always open the POS via the new '$Name' shortcut so silent print is active." -ForegroundColor DarkGray
+Write-Host "  Open the POS from the '$Name' icon on the Desktop." -ForegroundColor DarkGray
+if (-not $Kiosk) {
+    Write-Host "  The POS opens in an app window - you can Alt+Tab and use the taskbar normally." -ForegroundColor DarkGray
+}
 Write-Host ""

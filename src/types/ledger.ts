@@ -78,6 +78,8 @@ export interface RawReturn {
   Total?: number;
   totalAmount?: number;
   TotalAmount?: number;
+  /** The date the return was physically collected — preferred over createdAt */
+  collectedDate?: unknown;
   createdAt?: string;
   CreatedAt?: string;
   date?: string;
@@ -231,7 +233,13 @@ export function getReturnAmount(r: RawReturn): number {
 }
 
 export function getReturnDate(r: RawReturn): Date {
-  return tsToDate(r.createdAt ?? r.CreatedAt ?? r.returnDate ?? r.ReturnDate ?? r.date) ?? new Date();
+  // collectedDate is the actual return date (matches order-admin priority)
+  return (
+    tsToDate(r.collectedDate) ??
+    tsToDate(r.returnDate ?? r.ReturnDate) ??
+    tsToDate(r.createdAt ?? r.CreatedAt ?? r.date) ??
+    new Date()
+  );
 }
 
 export function getReturnId(r: RawReturn): string {
