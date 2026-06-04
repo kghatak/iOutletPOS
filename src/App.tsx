@@ -19,6 +19,7 @@ import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import AssessmentOutlinedIcon from "@mui/icons-material/AssessmentOutlined";
 import InventoryOutlinedIcon from "@mui/icons-material/InventoryOutlined";
+import DeleteSweepOutlinedIcon from "@mui/icons-material/DeleteSweepOutlined";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import GlobalStyles from "@mui/material/GlobalStyles";
@@ -41,6 +42,7 @@ import { LoginPage } from "./pages/login/index";
 import { SessionExpiredPage } from "./pages/session-expired/index";
 import { ReportsPage } from "./pages/reports/index";
 import { ProductsManagementPage } from "./pages/products-management/index";
+import { WastagePage } from "./pages/wastage/index";
 import { AppLayoutHeader } from "./components/AppLayoutHeader";
 import { SiderLogoutButton } from "./components/SiderLogoutButton";
 
@@ -132,6 +134,14 @@ function App() {
                       icon: <AssessmentOutlinedIcon />,
                     },
                   },
+                  {
+                    name: "wastage",
+                    list: "/wastage",
+                    meta: {
+                      label: "Wastage Details",
+                      icon: <DeleteSweepOutlinedIcon />,
+                    },
+                  },
                 ]}
                 options={{
                   syncWithLocation: true,
@@ -200,6 +210,7 @@ function App() {
                     <Route path="/expenses/:dateKey/view" element={<ExpenseDateViewPage />} />
                     <Route path="/expenses" element={<ExpensePage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/wastage" element={<WastagePage />} />
                     <Route path="*" element={<ErrorComponent />} />
                   </Route>
                 </Routes>
