@@ -11,6 +11,8 @@ export type WastageRecord = {
   unit: string;
   price: number;
   reason: string;
+  customerPhone?: string;
+  customerAddress?: string;
   status: WastageStatus;
   date: string;
   createdAt?: string;
@@ -23,5 +25,6 @@ export const WASTAGE_REASONS = [
   { value: "spillage", label: "Spillage" },
   { value: "contaminated", label: "Contaminated" },
   { value: "theft", label: "Theft" },
+  { value: "customer_replacement", label: "Customer Replacement" },
   { value: "other", label: "Other" },
 ] as const;

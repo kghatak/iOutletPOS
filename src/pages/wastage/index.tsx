@@ -18,6 +18,7 @@ import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import {
   DataGrid,
   type GridColDef,
@@ -230,6 +231,9 @@ export const WastagePage = () => {
   const [priceTouched, setPriceTouched] = useState(false);
   const [reason, setReason] = useState<string>("expired");
   const [otherReason, setOtherReason] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerPhoneTouched, setCustomerPhoneTouched] = useState(false);
+  const [customerAddress, setCustomerAddress] = useState("");
   const [wastageDate, setWastageDate] = useState(getTodayIso());
   const [submitting, setSubmitting] = useState(false);
 
@@ -257,8 +261,18 @@ export const WastagePage = () => {
     return "";
   }, [price]);
 
+  const customerPhoneError = useMemo(() => {
+    const digits = customerPhone.replace(/\D/g, "");
+    if (!digits) return "Phone number is required.";
+    if (digits.length !== 10) return "Enter a 10-digit phone number.";
+    return "";
+  }, [customerPhone]);
+
   const formValid = useMemo(() => {
     const otherReasonOk = reason !== "other" || otherReason.trim().length > 0;
+    const customerReplacementOk =
+      reason !== "customer_replacement" ||
+      (customerPhoneError === "" && customerAddress.trim().length > 0);
     return (
       name.trim().length > 0 &&
       selectedProductId !== "" &&
@@ -266,9 +280,20 @@ export const WastagePage = () => {
       priceError === "" &&
       unit !== "" &&
       reason !== "" &&
-      otherReasonOk
+      otherReasonOk &&
+      customerReplacementOk
     );
-  }, [name, selectedProductId, quantityError, priceError, unit, reason, otherReason]);
+  }, [
+    name,
+    selectedProductId,
+    quantityError,
+    priceError,
+    unit,
+    reason,
+    otherReason,
+    customerPhoneError,
+    customerAddress,
+  ]);
 
   const refreshList = () =>
     fetchWastage(
@@ -288,6 +313,9 @@ export const WastagePage = () => {
     setPriceTouched(false);
     setReason("expired");
     setOtherReason("");
+    setCustomerPhone("");
+    setCustomerPhoneTouched(false);
+    setCustomerAddress("");
     setWastageDate(getTodayIso());
   };
 
@@ -319,6 +347,9 @@ export const WastagePage = () => {
     setPriceTouched(false);
     setReason(formReason);
     setOtherReason(formOther);
+    setCustomerPhone((record.customerPhone ?? "").replace(/\D/g, "").slice(0, 10));
+    setCustomerPhoneTouched(false);
+    setCustomerAddress(record.customerAddress ?? "");
     setWastageDate(recordDateKey(record.date) || getTodayIso());
     setDialogOpen(true);
   }, []);
@@ -338,6 +369,12 @@ export const WastagePage = () => {
       price: Number(price),
       reason: resolvedReason,
       date: wastageDate,
+      ...(reason === "customer_replacement"
+        ? {
+            customerPhone: customerPhone.replace(/\D/g, ""),
+            customerAddress: customerAddress.trim(),
+          }
+        : {}),
     };
 
     setSubmitting(true);
@@ -501,7 +538,39 @@ export const WastagePage = () => {
         field: "name",
         headerName: "Name",
         flex: 1,
-        minWidth: 130,
+        minWidth: 150,
+        renderCell: (params) => (
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <Typography variant="body2">{params.row.name}</Typography>
+            {params.row.reason === "customer_replacement" ? (
+              <Tooltip
+                title={
+                  <Stack spacing={0.5} sx={{ py: 0.25 }}>
+                    <Typography variant="body2">
+                      <strong>Phone:</strong>{" "}
+                      {params.row.customerPhone?.trim() || "—"}
+                    </Typography>
+                    <Typography variant="body2">
+                      <strong>Address:</strong>{" "}
+                      {params.row.customerAddress?.trim() || "—"}
+                    </Typography>
+                  </Stack>
+                }
+                arrow
+                placement="top"
+              >
+                <IconButton
+                  size="small"
+                  color="info"
+                  aria-label="Customer replacement details"
+                  sx={{ p: 0.25 }}
+                >
+                  <InfoOutlinedIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+          </Stack>
+        ),
       },
       {
         field: "productName",
@@ -922,8 +991,14 @@ export const WastagePage = () => {
               label="Reason"
               value={reason}
               onChange={(e) => {
-                setReason(e.target.value);
-                if (e.target.value !== "other") setOtherReason("");
+                const next = e.target.value;
+                setReason(next);
+                if (next !== "other") setOtherReason("");
+                if (next !== "customer_replacement") {
+                  setCustomerPhone("");
+                  setCustomerPhoneTouched(false);
+                  setCustomerAddress("");
+                }
               }}
               fullWidth
               size="small"
@@ -947,6 +1022,46 @@ export const WastagePage = () => {
                 autoFocus
                 placeholder="Describe the reason…"
               />
+            )}
+
+            {reason === "customer_replacement" && (
+              <>
+                <TextField
+                  label="Phone Number"
+                  value={customerPhone}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    setCustomerPhone(digits);
+                    setCustomerPhoneTouched(true);
+                  }}
+                  onBlur={() => setCustomerPhoneTouched(true)}
+                  fullWidth
+                  size="small"
+                  required
+                  autoFocus
+                  placeholder="10-digit phone number"
+                  error={customerPhoneTouched && customerPhoneError !== ""}
+                  helperText={
+                    customerPhoneTouched && customerPhoneError
+                      ? customerPhoneError
+                      : "Max 10 digits"
+                  }
+                  slotProps={{
+                    htmlInput: { inputMode: "numeric", maxLength: 10 },
+                  }}
+                />
+                <TextField
+                  label="Address"
+                  value={customerAddress}
+                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  fullWidth
+                  size="small"
+                  required
+                  multiline
+                  minRows={2}
+                  placeholder="Customer address"
+                />
+              </>
             )}
           </Stack>
         </DialogContent>
