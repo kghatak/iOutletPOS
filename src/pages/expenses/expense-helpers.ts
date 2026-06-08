@@ -3,6 +3,7 @@ import type {
   ExpensePaidFromValue,
   ExpenseRecord,
 } from "../../types/expense";
+import type { GridPaginationModel } from "@mui/x-data-grid";
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_PAID_FROM_OPTIONS,
@@ -81,6 +82,19 @@ function getRecordCategoryLabel(record: ExpenseRecord): string {
 
 function getRecordDateSource(record: ExpenseRecord): string {
   return record.date ?? record.createdAt ?? record.CreatedAt ?? "";
+}
+
+export function getExpenseRecordDateKey(record: ExpenseRecord): string {
+  return toDateKey(getRecordDateSource(record));
+}
+
+/** Keeps only records whose expense date matches `YYYY-MM-DD` (client fallback when API ignores `date`). */
+export function filterExpenseRecordsByDateKey(
+  records: ExpenseRecord[] | undefined,
+  dateKey: string,
+): ExpenseRecord[] {
+  if (!dateKey) return records ?? [];
+  return (records ?? []).filter((r) => getExpenseRecordDateKey(r) === dateKey);
 }
 
 function toDateKey(raw: string): string {
@@ -268,4 +282,28 @@ export function toEditableExpenseRows(row: DateWiseExpenseRow): EditableExpenseR
       canEdit: Boolean(expenseId),
     };
   });
+}
+
+export const EXPENSE_LIST_PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+
+export type ExpenseViewLocationState = {
+  expensesListSearch?: string;
+};
+
+export function parseExpenseListPagination(
+  searchParams: URLSearchParams,
+): GridPaginationModel {
+  const page = Math.max(0, Number.parseInt(searchParams.get("page") ?? "0", 10) || 0);
+  const pageSizeRaw =
+    Number.parseInt(searchParams.get("pageSize") ?? "10", 10) || 10;
+  const pageSize = (EXPENSE_LIST_PAGE_SIZE_OPTIONS as readonly number[]).includes(
+    pageSizeRaw,
+  )
+    ? pageSizeRaw
+    : 10;
+  return { page, pageSize };
+}
+
+export function buildExpensesListPath(search = ""): string {
+  return search ? `/expenses?${search}` : "/expenses";
 }

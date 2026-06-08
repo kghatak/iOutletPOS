@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import type { GridPaginationModel } from "@mui/x-data-grid";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -17,37 +18,93 @@ import Tooltip from "@mui/material/Tooltip";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 import { keys, useList, useNotification } from "@refinedev/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { useOutlet } from "../../context/outlet-context";
 import { API_BASE_URL } from "../../config";
 import { getApiHeaders } from "../../providers/authProvider";
 import type {
   ExpenseCategoryValue,
+  ExpenseDateSummary,
   ExpensePaidFromValue,
-  ExpenseRecord,
 } from "../../types/expense";
 import {
   EXPENSE_CATEGORIES,
   EXPENSE_PAID_FROM_OPTIONS,
   formatRupee,
 } from "../../types/expense";
-import { buildDateWiseRows, getTodayDateInputValue, type DateWiseExpenseRow } from "./expense-helpers";
+import {
+  EXPENSE_LIST_PAGE_SIZE_OPTIONS,
+  getTodayDateInputValue,
+  parseExpenseListPagination,
+  toDateLabel,
+  type DateWiseExpenseRow,
+} from "./expense-helpers";
+
+function mapSummariesToDateWiseRows(
+  items: ExpenseDateSummary[] | undefined,
+): DateWiseExpenseRow[] {
+  return (items ?? []).map((s) => {
+    const dateKey = typeof s.date === "string" ? s.date.slice(0, 10) : "";
+    return {
+      id: dateKey || "undated",
+      dateKey,
+      dateLabel: toDateLabel(dateKey),
+      totalAmount: Number(s.totalAmount) || 0,
+      records: [],
+    };
+  });
+}
 
 export const ExpensePage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const notification = useNotification();
   const { outletId } = useOutlet();
 
-  const listQuery = useList<ExpenseRecord>({
+  const paginationModel = useMemo(
+    () => parseExpenseListPagination(searchParams),
+    [searchParams],
+  );
+
+  const handlePaginationModelChange = useCallback(
+    (model: GridPaginationModel) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (model.page <= 0) next.delete("page");
+          else next.set("page", String(model.page));
+          if (model.pageSize === 10) next.delete("pageSize");
+          else next.set("pageSize", String(model.pageSize));
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const expensesListSearch = searchParams.toString();
+
+  const listQuery = useList<ExpenseDateSummary>({
     resource: "expenses",
-    pagination: { mode: "off" },
+    pagination: {
+      mode: "server",
+      currentPage: paginationModel.page + 1,
+      pageSize: paginationModel.pageSize,
+    },
+    meta: { summaryByDate: true },
     errorNotification: false,
-    queryOptions: { staleTime: 30 * 1000 },
+    queryOptions: {
+      staleTime: 30 * 1000,
+      refetchOnWindowFocus: false,
+    },
   });
 
+  const totalFromApi = Number(listQuery.result?.total ?? 0) || 0;
+
   const dateWiseRows = useMemo(
-    () => buildDateWiseRows(listQuery.result?.data),
+    () => mapSummariesToDateWiseRows(listQuery.result?.data),
     [listQuery.result?.data],
   );
 
@@ -220,7 +277,11 @@ export const ExpensePage = () => {
               size="small"
               aria-label="View expenses for this date"
               color="primary"
-              onClick={() => navigate(`/expenses/${encodeURIComponent(params.row.id)}/view`)}
+              onClick={() =>
+                navigate(`/expenses/${encodeURIComponent(params.row.id)}/view`, {
+                  state: { expensesListSearch },
+                })
+              }
             >
               <VisibilityOutlinedIcon fontSize="small" />
             </IconButton>
@@ -228,7 +289,7 @@ export const ExpensePage = () => {
         ),
       },
     ],
-    [navigate],
+    [navigate, expensesListSearch],
   );
 
   const header = (
@@ -288,10 +349,12 @@ export const ExpensePage = () => {
           rows={dateWiseRows}
           columns={reportColumns}
           disableRowSelectionOnClick
-          pageSizeOptions={[10, 25, 50]}
-          initialState={{
-            pagination: { paginationModel: { pageSize: 10 } },
-          }}
+          paginationMode="server"
+          rowCount={totalFromApi}
+          paginationModel={paginationModel}
+          onPaginationModelChange={handlePaginationModelChange}
+          pageSizeOptions={[...EXPENSE_LIST_PAGE_SIZE_OPTIONS]}
+          loading={listQuery.query.isFetching}
           sx={{
             "& .MuiDataGrid-columnHeaderTitle": { fontWeight: 600 },
             "& .MuiDataGrid-cell": { alignItems: "center", display: "flex" },

@@ -23,6 +23,13 @@ export const EXPENSE_PAID_FROM_OPTIONS = [
 
 export type ExpensePaidFromValue = (typeof EXPENSE_PAID_FROM_OPTIONS)[number]["value"];
 
+/** One row when `GET /expenses?groupBy=date` is used for the list page. */
+export type ExpenseDateSummary = BaseRecord & {
+  date: string;
+  totalAmount: number;
+  recordCount?: number;
+};
+
 export type ExpenseRecord = BaseRecord & {
   id?: string;
   /** MongoDB ObjectId string when returned by the API */

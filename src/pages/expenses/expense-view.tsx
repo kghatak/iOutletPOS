@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -13,48 +13,116 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
-import { keys, useList, useNotification } from "@refinedev/core";
+import { keys, useNotification } from "@refinedev/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useLocation } from "react-router";
 import { useOutlet } from "../../context/outlet-context";
 import { API_BASE_URL } from "../../config";
 import { getApiHeaders } from "../../providers/authProvider";
 import type { ExpenseCategoryValue, ExpensePaidFromValue, ExpenseRecord } from "../../types/expense";
 import { EXPENSE_CATEGORIES, EXPENSE_PAID_FROM_OPTIONS, formatRupee } from "../../types/expense";
 import {
-  buildDateWiseRows,
   buildExpenseViewGridRows,
+  buildExpensesListPath,
+  filterExpenseRecordsByDateKey,
+  toDateLabel,
   type DateWiseExpenseRow,
   type EditableExpenseRow,
   type ExpenseViewGridRow,
+  type ExpenseViewLocationState,
   getRecordAmount,
   toEditableExpenseRows,
 } from "./expense-helpers";
 
+function normalizeExpenseList(json: unknown): ExpenseRecord[] {
+  if (Array.isArray(json)) return json as ExpenseRecord[];
+  if (!json || typeof json !== "object") return [];
+  const o = json as Record<string, unknown>;
+  const nested = o.data ?? o.items ?? o.results;
+  if (Array.isArray(nested)) return nested as ExpenseRecord[];
+  return [];
+}
+
 export const ExpenseDateViewPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
   const notification = useNotification();
   const { outletId } = useOutlet();
   const { dateKey: dateKeyParam } = useParams<{ dateKey: string }>();
   const dateKey = dateKeyParam ? decodeURIComponent(dateKeyParam) : "";
 
-  const listQuery = useList<ExpenseRecord>({
-    resource: "expenses",
-    pagination: { mode: "off" },
-    errorNotification: false,
-    queryOptions: { staleTime: 30 * 1000 },
-  });
+  const expensesListSearch =
+    (location.state as ExpenseViewLocationState | null)?.expensesListSearch ?? "";
 
-  const dateWiseRows = useMemo(
-    () => buildDateWiseRows(listQuery.result?.data),
-    [listQuery.result?.data],
-  );
+  const goBackToExpenses = useCallback(() => {
+    if (expensesListSearch) {
+      navigate(buildExpensesListPath(expensesListSearch));
+      return;
+    }
+    navigate(-1);
+  }, [navigate, expensesListSearch]);
 
-  const row: DateWiseExpenseRow | null = useMemo(
-    () => (dateKey ? (dateWiseRows.find((r: DateWiseExpenseRow) => r.id === dateKey) ?? null) : null),
-    [dateWiseRows, dateKey],
-  );
+  const [records, setRecords] = useState<ExpenseRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const loadExpensesForDate = useCallback(async () => {
+    if (!dateKey || !outletId) {
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const qs = new URLSearchParams({
+        outletId,
+        date: dateKey,
+      });
+      const res = await fetch(`${API_BASE_URL}/expenses?${qs.toString()}`, {
+        headers: getApiHeaders(),
+      });
+      if (!res.ok) {
+        setLoadError(true);
+        setRecords([]);
+        return;
+      }
+      const json = await res.json();
+      setRecords(filterExpenseRecordsByDateKey(normalizeExpenseList(json), dateKey));
+    } catch {
+      setLoadError(true);
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [dateKey, outletId]);
+
+  useEffect(() => {
+    void loadExpensesForDate();
+  }, [loadExpensesForDate]);
+
+  const row: DateWiseExpenseRow | null = useMemo(() => {
+    if (!dateKey) return null;
+    if (loading) return null;
+    if (records.length === 0) {
+      return {
+        id: dateKey,
+        dateKey,
+        dateLabel: toDateLabel(dateKey),
+        totalAmount: 0,
+        records: [],
+      };
+    }
+    const totalAmount = records.reduce((sum, r) => sum + getRecordAmount(r), 0);
+    return {
+      id: dateKey,
+      dateKey,
+      dateLabel: toDateLabel(dateKey),
+      totalAmount,
+      records,
+    };
+  }, [dateKey, records, loading]);
 
   const viewGridRows = useMemo(() => buildExpenseViewGridRows(row), [row]);
 
@@ -185,6 +253,7 @@ export const ExpenseDateViewPage = () => {
         await queryClient.invalidateQueries({
           queryKey: keys().data().resource("expenses").action("list").get(),
         });
+        await loadExpensesForDate();
         closeDrawer();
       } else {
         notification.open?.({
@@ -228,8 +297,9 @@ export const ExpenseDateViewPage = () => {
           await queryClient.invalidateQueries({
             queryKey: keys().data().resource("expenses").action("list").get(),
           });
+          await loadExpensesForDate();
           if (wasOnlyRecord) {
-            navigate("/expenses", { replace: true });
+            navigate(buildExpensesListPath(expensesListSearch), { replace: true });
           }
         } else {
           notification.open?.({
@@ -248,7 +318,7 @@ export const ExpenseDateViewPage = () => {
         setDeletingId(null);
       }
     },
-    [row, navigate, notification, queryClient, drawerOpen, editDraft?.expenseId, closeDrawer],
+    [row, navigate, notification, queryClient, drawerOpen, editDraft?.expenseId, closeDrawer, loadExpensesForDate, expensesListSearch],
   );
 
   const viewGridColumns = useMemo<GridColDef<ExpenseViewGridRow>[]>(
@@ -389,7 +459,7 @@ export const ExpenseDateViewPage = () => {
       sx={{ mb: 2 }}
     >
       <Stack direction="row" alignItems="center" gap={1} flexWrap="wrap">
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/expenses")} size="small">
+        <Button startIcon={<ArrowBackIcon />} onClick={goBackToExpenses} size="small">
           Expenses
         </Button>
         <Typography variant="h5" component="h1">
@@ -399,7 +469,7 @@ export const ExpenseDateViewPage = () => {
     </Stack>
   );
 
-  if (listQuery.query.isPending) {
+  if (loading) {
     return (
       <>
         {header}
@@ -410,7 +480,7 @@ export const ExpenseDateViewPage = () => {
     );
   }
 
-  if (listQuery.query.isError) {
+  if (loadError) {
     return (
       <>
         {header}
@@ -428,17 +498,19 @@ export const ExpenseDateViewPage = () => {
         <Typography color="text.secondary" sx={{ py: 2 }}>
           No expenses found for this date.
         </Typography>
-        <Button variant="outlined" onClick={() => navigate("/expenses")}>
+        <Button variant="outlined" onClick={goBackToExpenses}>
           Back to expenses
         </Button>
       </>
     );
   }
 
+  const viewingRow = row;
+
   return (
     <>
       {header}
-      {row.records.length === 0 ? (
+      {viewingRow.records.length === 0 ? (
         <Typography color="text.secondary" sx={{ py: 2 }}>
           No expenses found for this date.
         </Typography>
