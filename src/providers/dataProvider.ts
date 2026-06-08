@@ -26,11 +26,8 @@ function normalizeListResponse<T>(json: unknown): T[] {
   return [];
 }
 
-function parseSalesListEnvelope(json: unknown): {
-  rows: SaleRecord[];
-  total: number;
-} {
-  const rows = normalizeListResponse<SaleRecord>(json);
+function parseListEnvelope<T>(json: unknown): { rows: T[]; total: number } {
+  const rows = normalizeListResponse<T>(json);
   let total = rows.length;
   if (!json || typeof json !== "object") return { rows, total };
   const p = (json as Record<string, unknown>).pagination;
@@ -39,6 +36,13 @@ function parseSalesListEnvelope(json: unknown): {
     if (!Number.isNaN(t)) total = Math.trunc(Math.max(t, 0));
   }
   return { rows, total };
+}
+
+function parseSalesListEnvelope(json: unknown): {
+  rows: SaleRecord[];
+  total: number;
+} {
+  return parseListEnvelope<SaleRecord>(json);
 }
 
 function getOutletId(): string {
@@ -146,17 +150,39 @@ export const dataProvider: DataProvider = {
       };
     }
     if (resource === "expenses") {
-      const response = await fetch(`${API_BASE_URL}/expenses`, {
-        headers: getApiHeaders(),
-      });
+      const qs = new URLSearchParams();
+      const outletId = getOutletId();
+      const meta = params.meta as
+        | { summaryByDate?: boolean; expenseDate?: string }
+        | undefined;
+
+      if (outletId) qs.set("outletId", outletId);
+      if (meta?.summaryByDate) qs.set("groupBy", "date");
+      if (meta?.expenseDate) qs.set("date", meta.expenseDate);
+
+      const p = params.pagination;
+      if (!p || p.mode === "off") {
+        if (!meta?.expenseDate) {
+          qs.set("skip", "0");
+          qs.set("limit", String(meta?.summaryByDate ? 10 : 500));
+        }
+      } else {
+        const limit = Math.max(1, Math.floor(p.pageSize ?? 10));
+        const currentPage = Math.max(1, Math.floor(p.currentPage ?? 1));
+        qs.set("skip", String((currentPage - 1) * limit));
+        qs.set("limit", String(limit));
+      }
+
+      const url = `${API_BASE_URL}/expenses?${qs.toString()}`;
+      const response = await fetch(url, { headers: getApiHeaders() });
       if (!response.ok) {
         throw createHttpError(response.status, "Could not load expenses");
       }
       const json = await response.json();
-      const data = normalizeListResponse<ExpenseRecord>(json);
+      const { rows: data, total } = parseListEnvelope<ExpenseRecord>(json);
       return {
         data: data as unknown as TData[],
-        total: data.length,
+        total,
       };
     }
     return base.getList(params);
