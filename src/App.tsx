@@ -1,11 +1,10 @@
 import type { FC } from "react";
-import { Authenticated, Refine } from "@refinedev/core";
+import { Authenticated, Refine, useLink } from "@refinedev/core";
 import {
   useNotificationProvider,
   RefineSnackbarProvider,
   ThemedLayout,
   ThemedSider,
-  ThemedTitle,
   RefineThemes,
   ErrorComponent,
 } from "@refinedev/mui";
@@ -24,6 +23,8 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import GlobalStyles from "@mui/material/GlobalStyles";
 import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import MuiLink from "@mui/material/Link";
 
 import { dataProvider } from "./providers/dataProvider";
 import { startSyncService } from "./utils/syncService";
@@ -47,6 +48,50 @@ import { AppLayoutHeader } from "./components/AppLayoutHeader";
 import { SiderLogoutButton } from "./components/SiderLogoutButton";
 
 const BRAND_ICON_SRC = "/nannu-milk-icon.png";
+
+const AppTitle: FC<{ collapsed: boolean }> = ({ collapsed }) => {
+  const Link = useLink();
+
+  return (
+    <Link to="/" style={{ textDecoration: "none" }}>
+      <MuiLink
+        underline="none"
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.25,
+          justifyContent: collapsed ? "center" : "flex-start",
+        }}
+      >
+        <Box
+          component="img"
+          src={BRAND_ICON_SRC}
+          alt="Nannu Milk"
+          sx={{
+            width: collapsed ? 36 : 40,
+            height: collapsed ? 36 : 40,
+            objectFit: "contain",
+            borderRadius: 1,
+            flexShrink: 0,
+            display: "block",
+          }}
+        />
+        {!collapsed ? (
+          <Typography
+            variant="h6"
+            fontWeight={700}
+            color="text.primary"
+            noWrap
+            sx={{ fontSize: "1rem", lineHeight: 1.2 }}
+          >
+            Nannu Milk
+          </Typography>
+        ) : null}
+      </MuiLink>
+    </Link>
+  );
+};
+
 const appTheme = createTheme(RefineThemes.Blue, {
   palette: {
     primary: {
@@ -57,27 +102,6 @@ const appTheme = createTheme(RefineThemes.Blue, {
     },
   },
 });
-
-const AppTitle: FC<{ collapsed: boolean }> = ({ collapsed }) => (
-  <ThemedTitle
-    collapsed={collapsed}
-    text="Nannu Milk"
-    icon={
-      <Box
-        component="img"
-        src={BRAND_ICON_SRC}
-        alt=""
-        sx={{
-          width: collapsed ? 26 : 30,
-          height: collapsed ? 26 : 30,
-          objectFit: "contain",
-          display: "block",
-          borderRadius: 1,
-        }}
-      />
-    }
-  />
-);
 
 function App() {
   return (
