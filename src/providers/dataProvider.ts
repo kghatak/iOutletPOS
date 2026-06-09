@@ -2,6 +2,7 @@ import type { BaseRecord, DataProvider, GetListParams } from "@refinedev/core";
 import simpleRestDataProvider from "@refinedev/simple-rest";
 import { API_BASE_URL, AUTH_STORAGE_KEY } from "../config";
 import type { Product } from "../types/product";
+import { isManualProductId } from "../utils/manualProducts";
 import type { SaleRecord } from "../types/sale";
 import type { ExpenseRecord } from "../types/expense";
 import { getApiHeaders } from "./authProvider";
@@ -87,16 +88,27 @@ export const dataProvider: DataProvider = {
       }
       const json = await response.json();
       const raw = extractOutletProducts(json);
-      const data: Product[] = raw.map((r) => ({
-        id: String(r.productId ?? r._id ?? r.id ?? ""),
-        productId: String(r.productId ?? r._id ?? r.id ?? ""),
-        name: String(r.name ?? ""),
-        price: Number(r.price) || 0,
-        unit: r.unit != null ? String(r.unit) : undefined,
-        active: r.active !== false,
-        category: r.category != null ? String(r.category) : undefined,
-        availableQuantity: r.quantity != null ? Number(r.quantity) || 0 : r.availableQuantity != null ? Number(r.availableQuantity) || 0 : undefined,
-      }));
+      const data: Product[] = raw.map((r) => {
+        const productId = String(r.productId ?? r._id ?? r.id ?? "");
+        const isManual =
+          r.isManual === true || r.IsManual === true || isManualProductId(productId);
+        return {
+          id: productId,
+          productId,
+          name: String(r.name ?? ""),
+          price: Number(r.price) || 0,
+          unit: r.unit != null ? String(r.unit) : undefined,
+          active: r.active !== false,
+          category: r.category != null ? String(r.category) : undefined,
+          availableQuantity:
+            r.quantity != null
+              ? Number(r.quantity) || 0
+              : r.availableQuantity != null
+                ? Number(r.availableQuantity) || 0
+                : undefined,
+          ...(isManual ? { isManual: true } : {}),
+        };
+      });
       return {
         data: data as unknown as TData[],
         total: data.length,
