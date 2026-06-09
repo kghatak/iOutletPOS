@@ -1,3 +1,5 @@
+import type { SalePaymentSplit } from "./payment";
+
 /** Thermal roll width for PDF page size (72pt per inch). */
 export type ThermalPaperWidth = "3inch";
 
@@ -25,6 +27,8 @@ export interface InvoiceData {
   discount?: number | { amount?: number; type?: string; value?: number };
   total: number;
   paymentMode?: string;
+  /** When `paymentMode` is Split — per-channel amounts. */
+  payments?: SalePaymentSplit[];
   paperWidth?: ThermalPaperWidth;
   /** 3″ retail layout: e.g. Pick Up / Delivery */
   orderType?: string;

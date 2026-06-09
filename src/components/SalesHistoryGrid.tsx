@@ -38,6 +38,7 @@ import {
   getSaleDiscountAmountRupees,
   isSalePaymentDue,
 } from "../types/sale";
+import { formatPaymentDisplayLabel } from "../types/payment";
 import { printThermalInvoice } from "../utils/thermalInvoice";
 import type { InvoiceData } from "../types/thermalInvoice";
 import { EditSaleDialog } from "./EditSaleDialog";
@@ -151,6 +152,7 @@ function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
     discount: row.discount,
     total: row.amount,
     paymentMode: row.paymentMode,
+    payments: row.payments,
     orderType: "Pick Up",
     billTime: gridRowBillTime(row),
     cashierName: getSessionCashierName(),
@@ -547,10 +549,14 @@ export function SalesHistoryGrid({
                     />
                   );
                 }
-                const m = (row.paymentMode ?? "").trim();
+                const label = formatPaymentDisplayLabel(row.paymentMode, row.payments);
                 return (
-                  <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
-                    {m || "—"}
+                  <Typography
+                    variant="body2"
+                    sx={{ fontSize: "0.72rem", lineHeight: 1.3, whiteSpace: "normal" }}
+                    title={label}
+                  >
+                    {label}
                   </Typography>
                 );
               },

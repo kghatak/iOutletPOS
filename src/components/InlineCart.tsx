@@ -45,6 +45,16 @@ import {
   getSalesCreatePostUrl,
   isSalesCreateResponseSuccess,
 } from "../utils/salesCreate";
+import {
+  buildPaymentsFromSplitAmounts,
+  EMPTY_SPLIT_AMOUNTS,
+  formatPaymentDisplayLabel,
+  isSplitPaymentBalanced,
+  SPLIT_PAYMENT_CHANNELS,
+  splitPaymentsTotal,
+  type PosPaymentMode,
+  type SplitPaymentAmounts,
+} from "../types/payment";
 
 const compactInputSx = {
   "& .MuiInputBase-root": { fontSize: "0.72rem" },
@@ -52,7 +62,67 @@ const compactInputSx = {
   "& .MuiInputLabel-root": { fontSize: "0.72rem" },
 } as const;
 
-type PosPaymentMode = "Cash" | "Card" | "UPI" | "Due";
+function SplitPaymentPanel({
+  finalTotal,
+  amounts,
+  onChange,
+}: {
+  finalTotal: number;
+  amounts: SplitPaymentAmounts;
+  onChange: (mode: keyof SplitPaymentAmounts, value: string) => void;
+}) {
+  const payments = buildPaymentsFromSplitAmounts(amounts);
+  const paid = splitPaymentsTotal(payments);
+  const remaining = Math.round((finalTotal - paid) * 100) / 100;
+  const balanced = isSplitPaymentBalanced(payments, finalTotal);
+
+  return (
+    <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15, bgcolor: "grey.50" }}>
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.85, fontSize: "0.68rem" }}>
+        Enter amounts per mode (must total ₹{finalTotal.toFixed(2)})
+      </Typography>
+      <Stack spacing={0.85}>
+        {SPLIT_PAYMENT_CHANNELS.map((mode) => (
+          <TextField
+            key={mode}
+            label={`${mode} (₹)`}
+            type="number"
+            value={amounts[mode]}
+            onChange={(e) => onChange(mode, e.target.value)}
+            fullWidth
+            size="small"
+            sx={compactInputSx}
+            slotProps={{ htmlInput: { min: 0, step: "any" } }}
+          />
+        ))}
+      </Stack>
+      <Stack spacing={0.35} sx={{ mt: 0.85 }}>
+        <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Typography variant="caption" sx={{ fontSize: "0.68rem" }}>Paid</Typography>
+          <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
+            ₹{paid.toFixed(2)}
+          </Typography>
+        </Stack>
+        {!balanced && paid > 0 && (
+          <Typography
+            variant="caption"
+            color={remaining > 0 ? "error" : "warning.main"}
+            sx={{ fontSize: "0.68rem" }}
+          >
+            {remaining > 0
+              ? `₹${remaining.toFixed(2)} more needed`
+              : `₹${Math.abs(remaining).toFixed(2)} over total`}
+          </Typography>
+        )}
+        {balanced && (
+          <Typography variant="caption" color="success.main" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
+            Split payment matches total ✓
+          </Typography>
+        )}
+      </Stack>
+    </Paper>
+  );
+}
 
 function CartLineRow({
   line,
@@ -302,6 +372,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   const [discountInput, setDiscountInput] = useState("");
   const [paymentMode, setPaymentMode] = useState<PosPaymentMode>("Cash");
   const [cashReceived, setCashReceived] = useState("");
+  const [splitAmounts, setSplitAmounts] = useState<SplitPaymentAmounts>(EMPTY_SPLIT_AMOUNTS);
 
   const discountValue = useMemo(() => {
     const v = Number(discountInput);
@@ -311,6 +382,13 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   }, [discountInput, discountType, total]);
 
   const finalTotal = useMemo(() => Math.max(total - discountValue, 0), [total, discountValue]);
+
+  const splitPayments = useMemo(
+    () => buildPaymentsFromSplitAmounts(splitAmounts),
+    [splitAmounts],
+  );
+  const splitPaymentReady =
+    paymentMode === "Split" && isSplitPaymentBalanced(splitPayments, finalTotal);
 
   const cashReceivedNum = Number(cashReceived) || 0;
   const changeToReturn = paymentMode === "Cash" && cashReceivedNum > finalTotal
@@ -337,6 +415,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
     setLastOrder(null);
     setSavedOffline(false);
     setPaymentMode("Cash");
+    setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
   }, []);
 
   /** Leaving the success screen via "New Order" or by adding products again. */
@@ -352,11 +431,11 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
   const canPlaceOrder =
     lines.length > 0 &&
-    (paymentMode === "Cash" ||
+    ((paymentMode === "Cash" ||
       paymentMode === "Card" ||
-      paymentMode === "UPI" ||
-      paymentMode === "Due") &&
-    (paymentMode !== "Due" || dueCustomerComplete);
+      paymentMode === "UPI") ||
+      (paymentMode === "Due" && dueCustomerComplete) ||
+      splitPaymentReady);
 
   /**
    * `mode === "print"` → save + auto-print receipt + show success screen with reprint.
@@ -396,6 +475,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
         : undefined,
       total: finalTotal,
       paymentMode,
+      ...(paymentMode === "Split" ? { payments: splitPayments } : {}),
     };
 
     const { date: receiptDate, billTime } = invoiceReceiptStamp();
@@ -410,6 +490,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       discount: Math.round(discountValue * 100) / 100,
       total: finalTotal,
       paymentMode,
+      ...(paymentMode === "Split" ? { payments: splitPayments } : {}),
       orderType: "Pick Up",
       billTime,
       cashierName: getSessionCashierName(),
@@ -463,6 +544,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       setCustomerAddress("");
       setDiscountInput("");
       setCashReceived("");
+      setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
       onOrderPlaced?.();
       if (mode === "new") onNewOrder?.();
     } finally {
@@ -503,9 +585,11 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
           ₹{lastOrder.total.toFixed(2)}
         </Typography>
         {lastOrder.paymentMode && (
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.68rem" }}>
-            Paid via {lastOrder.paymentMode}
-          </Typography>
+          <Box sx={{ width: "100%" }}>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.68rem" }}>
+              {formatPaymentDisplayLabel(lastOrder.paymentMode, lastOrder.payments)}
+            </Typography>
+          </Box>
         )}
 
         <Button
@@ -596,7 +680,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
             </Button>
           </Stack>
 
-          <Box sx={{ flex: 1, overflow: "auto", minHeight: 0, mb: 1 }}>
+          <Box sx={{ flex: 1, overflow: "auto", minHeight: 0 }}>
             <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15 }}>
               <Typography variant="caption" color="text.secondary" gutterBottom display="block" sx={{ fontSize: "0.625rem" }}>
                 {paymentMode === "Due" ? "Customer (required for credit)" : "Customer (optional)"}
@@ -670,125 +754,127 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                 </Box>
               ))}
             </Box>
+          </Box>
 
-          <Divider sx={{ my: 0.85 }} />
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
-              Subtotal
-            </Typography>
-            <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
-              ₹{total.toFixed(2)}
-            </Typography>
-          </Stack>
-
-          {/* Discount */}
-          <Stack direction="row" alignItems="center" spacing={0.85} sx={{ mt: 0.85 }}>
-            <ToggleButtonGroup
-              value={discountType}
-              exclusive
-              onChange={(_, v) => { if (v) setDiscountType(v); }}
-              size="small"
-              sx={{ height: 28 }}
-            >
-              <ToggleButton value="₹" sx={{ px: 0.85, fontWeight: 700, fontSize: "0.72rem", py: 0.25 }}>₹</ToggleButton>
-              <ToggleButton value="%" sx={{ px: 0.85, fontWeight: 700, fontSize: "0.72rem", py: 0.25 }}>%</ToggleButton>
-            </ToggleButtonGroup>
-            <TextField
-              size="small"
-              label={discountType === "%" ? "Discount (%)" : "Discount (₹)"}
-              type="number"
-              value={discountInput}
-              onChange={(e) => setDiscountInput(e.target.value)}
-              fullWidth
-              sx={compactInputSx}
-              slotProps={{ htmlInput: { min: 0, max: discountType === "%" ? 100 : total, step: "any" } }}
-            />
-          </Stack>
-          {discountValue > 0 && (
-            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.35 }}>
-              <Typography variant="caption" color="error.main" sx={{ fontSize: "0.68rem" }}>
-                {discountType === "%" ? "Discount (%)" : "Discount (₹)"}
+          <Box sx={{ flexShrink: 0, pt: 1, borderTop: 1, borderColor: "divider" }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="center">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
+                Subtotal
               </Typography>
-              <Typography variant="caption" color="error.main" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
-                −₹{discountValue.toFixed(2)}
+              <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
+                ₹{total.toFixed(2)}
               </Typography>
             </Stack>
-          )}
 
-          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.85, mb: 1.15 }}>
-            <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.8rem" }}>
-              Total
-            </Typography>
-            <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.9rem" }}>
-              ₹{finalTotal.toFixed(2)}
-            </Typography>
-          </Stack>
-
-          {/* Payment Mode */}
-          <TextField
-            select
-            required
-            label="Payment Mode"
-            value={paymentMode}
-            onChange={(e) => {
-              setPaymentMode(e.target.value as PosPaymentMode);
-              setCashReceived("");
-            }}
-            fullWidth
-            size="small"
-            sx={{ mb: 1.15, ...compactInputSx }}
-            slotProps={{
-              inputLabel: { shrink: true },
-              select: {
-                displayEmpty: true,
-                renderValue: (selected) =>
-                  selected === "" ? (
-                    <Typography component="span" variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
-                      Select payment mode
-                    </Typography>
-                  ) : (
-                    String(selected)
-                  ),
-              },
-            }}
-          >
-            <MenuItem value="Cash">Cash</MenuItem>
-            <MenuItem value="Card">Card</MenuItem>
-            <MenuItem value="UPI">UPI</MenuItem>
-            <MenuItem value="Due">Due (credit)</MenuItem>
-          </TextField>
-
-          {/* Cash received & change */}
-          {paymentMode === "Cash" && (
-            <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15, bgcolor: "grey.50" }}>
-              <TextField
-                label="Cash Received"
-                type="number"
-                value={cashReceived}
-                onChange={(e) => setCashReceived(e.target.value)}
-                fullWidth
+            <Stack direction="row" alignItems="center" spacing={0.85} sx={{ mt: 0.85 }}>
+              <ToggleButtonGroup
+                value={discountType}
+                exclusive
+                onChange={(_, v) => { if (v) setDiscountType(v); }}
                 size="small"
+                sx={{ height: 28 }}
+              >
+                <ToggleButton value="₹" sx={{ px: 0.85, fontWeight: 700, fontSize: "0.72rem", py: 0.25 }}>₹</ToggleButton>
+                <ToggleButton value="%" sx={{ px: 0.85, fontWeight: 700, fontSize: "0.72rem", py: 0.25 }}>%</ToggleButton>
+              </ToggleButtonGroup>
+              <TextField
+                size="small"
+                label={discountType === "%" ? "Discount (%)" : "Discount (₹)"}
+                type="number"
+                value={discountInput}
+                onChange={(e) => setDiscountInput(e.target.value)}
+                fullWidth
                 sx={compactInputSx}
-                slotProps={{ htmlInput: { min: 0, step: "any" } }}
+                slotProps={{ htmlInput: { min: 0, max: discountType === "%" ? 100 : total, step: "any" } }}
               />
-              {cashReceivedNum > 0 && cashReceivedNum >= finalTotal && (
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.85 }}>
-                  <Typography variant="caption" fontWeight={700} color="success.main" sx={{ fontSize: "0.68rem" }}>
-                    Return to Customer
-                  </Typography>
-                  <Typography variant="body2" fontWeight={700} color="success.main" sx={{ fontSize: "0.82rem" }}>
-                    ₹{changeToReturn.toFixed(2)}
-                  </Typography>
-                </Stack>
-              )}
-              {cashReceivedNum > 0 && cashReceivedNum < finalTotal && (
-                <Typography variant="caption" color="error" sx={{ mt: 0.35, display: "block", fontSize: "0.68rem" }}>
-                  Insufficient — ₹{(finalTotal - cashReceivedNum).toFixed(2)} more needed
+            </Stack>
+            {discountValue > 0 && (
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.35 }}>
+                <Typography variant="caption" color="error.main" sx={{ fontSize: "0.68rem" }}>
+                  {discountType === "%" ? "Discount (%)" : "Discount (₹)"}
                 </Typography>
-              )}
-            </Paper>
-          )}
+                <Typography variant="caption" color="error.main" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
+                  −₹{discountValue.toFixed(2)}
+                </Typography>
+              </Stack>
+            )}
 
+            <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.85, mb: 1.15 }}>
+              <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.8rem" }}>
+                Total
+              </Typography>
+              <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.9rem" }}>
+                ₹{finalTotal.toFixed(2)}
+              </Typography>
+            </Stack>
+
+            <TextField
+              select
+              required
+              label="Payment Mode"
+              value={paymentMode}
+              onChange={(e) => {
+                const next = e.target.value as PosPaymentMode;
+                setPaymentMode(next);
+                setCashReceived("");
+                if (next !== "Split") setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
+              }}
+              fullWidth
+              size="small"
+              sx={{ mb: 1.15, ...compactInputSx }}
+              slotProps={{
+                inputLabel: { shrink: true },
+                select: {
+                  MenuProps: { PaperProps: { sx: { maxHeight: 320 } } },
+                },
+              }}
+            >
+              <MenuItem value="Cash">Cash</MenuItem>
+              <MenuItem value="Split">Split</MenuItem>
+              <MenuItem value="Card">Card</MenuItem>
+              <MenuItem value="UPI">UPI</MenuItem>
+              <MenuItem value="Due">Due (credit)</MenuItem>
+            </TextField>
+
+            {paymentMode === "Split" && (
+              <SplitPaymentPanel
+                finalTotal={finalTotal}
+                amounts={splitAmounts}
+                onChange={(mode, value) =>
+                  setSplitAmounts((prev) => ({ ...prev, [mode]: value }))
+                }
+              />
+            )}
+
+            {paymentMode === "Cash" && (
+              <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15, bgcolor: "grey.50" }}>
+                <TextField
+                  label="Cash Received"
+                  type="number"
+                  value={cashReceived}
+                  onChange={(e) => setCashReceived(e.target.value)}
+                  fullWidth
+                  size="small"
+                  sx={compactInputSx}
+                  slotProps={{ htmlInput: { min: 0, step: "any" } }}
+                />
+                {cashReceivedNum > 0 && cashReceivedNum >= finalTotal && (
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.85 }}>
+                    <Typography variant="caption" fontWeight={700} color="success.main" sx={{ fontSize: "0.68rem" }}>
+                      Return to Customer
+                    </Typography>
+                    <Typography variant="body2" fontWeight={700} color="success.main" sx={{ fontSize: "0.82rem" }}>
+                      ₹{changeToReturn.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                )}
+                {cashReceivedNum > 0 && cashReceivedNum < finalTotal && (
+                  <Typography variant="caption" color="error" sx={{ mt: 0.35, display: "block", fontSize: "0.68rem" }}>
+                    Insufficient — ₹{(finalTotal - cashReceivedNum).toFixed(2)} more needed
+                  </Typography>
+                )}
+              </Paper>
+            )}
           </Box>
         </>
       )}

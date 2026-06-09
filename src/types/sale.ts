@@ -1,5 +1,6 @@
 import type { BaseRecord } from "@refinedev/core";
 import { getSessionCashierName } from "../providers/authProvider";
+import { parseSalePayments, type SalePaymentSplit } from "./payment";
 
 /**
  * Shape is normalized from `GET /Sales`; extra fields are allowed for varying APIs.
@@ -41,6 +42,8 @@ export type SaleRecord = BaseRecord & {
   Discount?: unknown;
   paymentMode?: string;
   PaymentMode?: string;
+  payments?: unknown;
+  Payments?: unknown;
 };
 
 export interface SaleLineItem {
@@ -71,6 +74,7 @@ export type SalesGridRow = {
   subtotal?: number;
   discount?: SaleOrderDiscount;
   paymentMode?: string;
+  payments?: SalePaymentSplit[];
   /** Document id from API (`id` field) for PATCH /sales/:id */
   documentId?: string;
   outletId?: string;
@@ -269,6 +273,10 @@ export function getSalePaymentMode(record: SaleRecord): string | undefined {
   return undefined;
 }
 
+export function getSalePayments(record: SaleRecord): SalePaymentSplit[] | undefined {
+  return parseSalePayments(record.payments ?? record.Payments);
+}
+
 /** Staff name for employee report — best-effort from API fields. */
 export function getSaleBillerName(record: SaleRecord): string {
   return getSessionCashierName()?.trim() || "Unassigned";
@@ -451,6 +459,7 @@ export function saleRecordsToGridRows(records: SaleRecord[]): SalesGridRow[] {
     subtotal: getSaleSubtotal(r),
     discount: getSaleOrderDiscount(r),
     paymentMode: getSalePaymentMode(r),
+    payments: getSalePayments(r),
     documentId: (() => {
       const raw = r.id;
       if (raw == null) return undefined;

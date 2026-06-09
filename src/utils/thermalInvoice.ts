@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { pdf } from "@react-pdf/renderer";
 import type { InvoiceData, InvoiceItem } from "../types/thermalInvoice";
+import { isSplitPaymentMode } from "../types/payment";
 import { ThermalInvoicePdfDocument } from "../pdf/ThermalInvoicePdfDocument";
 import { getSessionOutletPrintInfo } from "../providers/authProvider";
 
@@ -73,6 +74,28 @@ function displayBillNo(invoiceNo: string): string {
   return invoiceNo.replace(/^#/, "").trim();
 }
 
+function renderPaymentSectionHtml(data: InvoiceData): string {
+  const mode = typeof data.paymentMode === "string" ? data.paymentMode.trim() : "";
+  const payments = data.payments ?? [];
+
+  if (isSplitPaymentMode(mode) && payments.length > 0) {
+    const rows = payments
+      .map(
+        (p) =>
+          `<div class="summary"><span>${escapeHtml(p.mode)}</span><span>${escapeHtml(fmtInr(p.amount))}</span></div>`,
+      )
+      .join("");
+    const paidTotal = payments.reduce((s, p) => s + p.amount, 0);
+    return `<div class="center bold meta-single">Payment (Split)</div>${rows}<div class="summary bold"><span>Total Paid</span><span>${escapeHtml(fmtInr(paidTotal))}</span></div>`;
+  }
+
+  if (mode) {
+    return `<div class="center bold meta-single">Payment Mode: ${escapeHtml(mode)}</div>`;
+  }
+
+  return "";
+}
+
 function renderItemsRowsHtml(items: InvoiceItem[]): string {
   return items
     .map((item, idx) => {
@@ -124,8 +147,7 @@ function buildThermalInvoiceHtml(data: InvoiceData): string {
     outletInfo.address || "Village Buchi, Pundri, Kaithal";
   const displayOutletContact =
     outletInfo.primaryPhoneNumber || "98127-12739, 92559-19666";
-  const paymentLabel =
-    typeof data.paymentMode === "string" ? data.paymentMode.trim() : "";
+  const paymentSection = renderPaymentSectionHtml(data);
 
   return `<!doctype html>
 <html lang="en">
@@ -262,11 +284,7 @@ function buildThermalInvoiceHtml(data: InvoiceData): string {
   <hr class="rule" />
 
   <div class="grand">Grand Total: Rs ${escapeHtml(fmtInr(netPayable))}</div>
-  ${
-    paymentLabel
-      ? `<div class="center bold meta-single">Payment Mode: ${escapeHtml(paymentLabel)}</div>`
-      : ""
-  }
+  ${paymentSection}
   <hr class="rule" />
 
   <div class="foot">Thanks &amp; visit again...!!!</div>
