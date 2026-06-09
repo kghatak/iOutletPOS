@@ -6,6 +6,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import type { InvoiceData, InvoiceItem } from "../types/thermalInvoice";
+import { isSplitPaymentMode } from "../types/payment";
 import { numberToWordsIndian } from "../utils/numberToWords";
 import { getSessionOutletPrintInfo } from "../providers/authProvider";
 
@@ -187,7 +188,11 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
     const outletInfo = getSessionOutletPrintInfo();
     const displayOutletAddress = outletInfo.address || "Village Buchi, Pundri, Kaithal";
     const displayOutletContact = outletInfo.primaryPhoneNumber || "98127-12739, 92559-19666";
-    const paymentLabel = typeof paymentMode === "string" ? paymentMode.trim() : "";
+    const splitPayments = data.payments ?? [];
+    const showSplit =
+      isSplitPaymentMode(paymentMode) && splitPayments.length > 0;
+    const paymentLabel =
+      !showSplit && typeof paymentMode === "string" ? paymentMode.trim() : "";
 
     return (
       <Document>
@@ -255,7 +260,25 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
               Grand Total: ₹{fmtInrPdf(netPayable)}
             </Text>
           </View>
-          {paymentLabel ? (
+          {showSplit ? (
+            <>
+              <Text style={[retail3.metaSingle, { textAlign: "center", fontWeight: "bold" }]}>
+                Payment (Split)
+              </Text>
+              {splitPayments.map((p) => (
+                <View key={p.mode} style={retail3.summaryRow}>
+                  <Text>{p.mode}</Text>
+                  <Text>{fmtInrPdf(p.amount)}</Text>
+                </View>
+              ))}
+              <View style={retail3.summaryRow}>
+                <Text style={{ fontWeight: "bold" }}>Total Paid</Text>
+                <Text style={{ fontWeight: "bold" }}>
+                  {fmtInrPdf(splitPayments.reduce((s, p) => s + p.amount, 0))}
+                </Text>
+              </View>
+            </>
+          ) : paymentLabel ? (
             <Text style={[retail3.metaSingle, { textAlign: "center", fontWeight: "bold" }]}>
               Payment Mode: {paymentLabel}
             </Text>

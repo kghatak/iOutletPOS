@@ -59,6 +59,7 @@ function queuedOrderToGridRow(order: QueuedOrder): SalesGridRow {
     subtotal: inv.subtotal,
     discount: inv.discount as SaleOrderDiscount | undefined,
     paymentMode: inv.paymentMode,
+    payments: inv.payments,
     pendingSync: order.status === "pending_sync" || order.status === "syncing",
     syncFailed: order.status === "sync_failed",
     localId: order.localId,
