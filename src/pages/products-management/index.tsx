@@ -5,8 +5,16 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
+import FormControl from "@mui/material/FormControl";
 import InputAdornment from "@mui/material/InputAdornment";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
 import Paper from "@mui/material/Paper";
+import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -17,6 +25,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
+import AddCircleOutlineIcon from "@mui/icons-material/AddCircleOutline";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import SaveIcon from "@mui/icons-material/Save";
 import SearchIcon from "@mui/icons-material/Search";
@@ -24,6 +33,7 @@ import type { Product } from "../../types/product";
 import { API_BASE_URL } from "../../config";
 import { getApiHeaders } from "../../providers/authProvider";
 import { useOutlet } from "../../context/outlet-context";
+import { createManualProduct, isManualProductId } from "../../utils/manualProducts";
 
 interface SelectedProduct {
   productId: string;
@@ -32,6 +42,11 @@ interface SelectedProduct {
   unit?: string;
   price: number;
   quantity: number;
+  isManual?: boolean;
+  /** Included in outlet on save. Unchecking keeps the row visible until Save. */
+  checked: boolean;
+  /** Loaded from server — unchecked rows stay in Added until Save. */
+  wasSaved?: boolean;
 }
 
 type SelectionMap = Record<string, SelectedProduct>;
@@ -46,6 +61,12 @@ export const ProductsManagementPage = () => {
   const [selection, setSelection] = useState<SelectionMap>({});
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualCategory, setManualCategory] = useState("");
+  const [manualPrice, setManualPrice] = useState("");
+  const [manualUnit, setManualUnit] = useState("");
+  const [manualQuantity, setManualQuantity] = useState("0");
 
   const listQuery = useList<Product>({
     resource: "all-products",
@@ -56,19 +77,53 @@ export const ProductsManagementPage = () => {
 
   const allProducts = useMemo(() => listQuery.result?.data ?? [], [listQuery.result?.data]);
 
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of allProducts) {
+      const c = p.category?.trim();
+      if (c) set.add(c);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allProducts]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return allProducts;
     return allProducts.filter((p) => p.name.toLowerCase().includes(q));
   }, [allProducts, search]);
 
+  const isInAddedSection = (sp: SelectedProduct | undefined) =>
+    Boolean(sp && (sp.checked || sp.wasSaved));
+
   const selectedFiltered = useMemo(
-    () => filtered.filter((p) => (p.productId ?? p.id) in selection),
+    () =>
+      filtered.filter((p) => {
+        const id = p.productId ?? p.id;
+        const sp = selection[id];
+        if (!sp || sp.isManual || isManualProductId(sp.productId)) return false;
+        return isInAddedSection(sp);
+      }),
     [filtered, selection],
   );
   const unselectedFiltered = useMemo(
-    () => filtered.filter((p) => !((p.productId ?? p.id) in selection)),
+    () =>
+      filtered.filter((p) => {
+        const id = p.productId ?? p.id;
+        const sp = selection[id];
+        if (!sp) return true;
+        if (sp.isManual || isManualProductId(sp.productId)) return false;
+        return !sp.checked && !sp.wasSaved;
+      }),
     [filtered, selection],
+  );
+
+  const manualInSelection = useMemo(
+    () =>
+      Object.values(selection).filter(
+        (sp) =>
+          (sp.isManual || isManualProductId(sp.productId)) && isInAddedSection(sp),
+      ),
+    [selection],
   );
 
   useEffect(() => {
@@ -97,6 +152,9 @@ export const ProductsManagementPage = () => {
           const map: SelectionMap = {};
           for (const sp of list) {
             if (sp.productId) {
+              const isManual =
+                (sp as SelectedProduct).isManual === true ||
+                isManualProductId(sp.productId);
               map[sp.productId] = {
                 productId: sp.productId,
                 name: sp.name ?? "",
@@ -104,10 +162,15 @@ export const ProductsManagementPage = () => {
                 unit: sp.unit,
                 price: Number(sp.price) || 0,
                 quantity: Number(sp.quantity) || 0,
+                checked: true,
+                wasSaved: true,
+                ...(isManual ? { isManual: true } : {}),
               };
             }
           }
           setSelection(map);
+          setSaved(true);
+          setDirty(false);
         }
       } catch {
         /* first time — no saved products yet */
@@ -119,17 +182,22 @@ export const ProductsManagementPage = () => {
     return () => { cancelled = true; };
   }, []);
 
-  const isSelected = (id: string) => id in selection;
-
   const toggleSelect = (product: Product) => {
     const id = product.productId ?? product.id;
     setSaved(false);
     setDirty(true);
     setSelection((prev) => {
       if (id in prev) {
-        const next = { ...prev };
-        delete next[id];
-        return next;
+        const current = prev[id];
+        if (current.checked) {
+          if (current.wasSaved) {
+            return { ...prev, [id]: { ...current, checked: false } };
+          }
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        }
+        return { ...prev, [id]: { ...current, checked: true } };
       }
       return {
         ...prev,
@@ -140,8 +208,27 @@ export const ProductsManagementPage = () => {
           unit: product.unit,
           price: product.price,
           quantity: product.availableQuantity ?? 0,
+          checked: true,
         },
       };
+    });
+  };
+
+  const toggleManualSelect = (productId: string) => {
+    setSaved(false);
+    setDirty(true);
+    setSelection((prev) => {
+      if (!(productId in prev)) return prev;
+      const current = prev[productId];
+      if (current.checked) {
+        if (current.wasSaved) {
+          return { ...prev, [productId]: { ...current, checked: false } };
+        }
+        const next = { ...prev };
+        delete next[productId];
+        return next;
+      }
+      return { ...prev, [productId]: { ...current, checked: true } };
     });
   };
 
@@ -158,16 +245,85 @@ export const ProductsManagementPage = () => {
     });
   };
 
-  const selectedCount = Object.keys(selection).length;
+  const selectedCount = useMemo(
+    () => Object.values(selection).filter((sp) => sp.checked).length,
+    [selection],
+  );
+
+  const resetManualForm = () => {
+    setManualName("");
+    setManualCategory("");
+    setManualPrice("");
+    setManualUnit("");
+    setManualQuantity("");
+  };
+
+  const openAddManualDialog = () => {
+    resetManualForm();
+    setAddDialogOpen(true);
+  };
+
+  const canSaveManual = useMemo(() => {
+    const name = manualName.trim();
+    const category = manualCategory.trim();
+    const unit = manualUnit.trim();
+    const priceStr = manualPrice.trim();
+    const qtyStr = manualQuantity.trim();
+    if (!name || !category || !unit || !priceStr || !qtyStr) return false;
+    const price = Number(priceStr);
+    const quantity = Number(qtyStr);
+    return (
+      Number.isFinite(price) &&
+      price >= 0 &&
+      Number.isFinite(quantity) &&
+      quantity >= 0
+    );
+  }, [manualName, manualCategory, manualUnit, manualPrice, manualQuantity]);
+
+  const handleAddManualProduct = () => {
+    if (!canSaveManual) return;
+    const name = manualName.trim();
+    const category = manualCategory.trim();
+    const unit = manualUnit.trim();
+    const price = Number(manualPrice);
+    const quantity = Number(manualQuantity);
+    const product = createManualProduct({
+      name,
+      category,
+      price,
+      unit,
+      quantity,
+    });
+    setSaved(false);
+    setDirty(true);
+    setSelection((prev) => ({
+      ...prev,
+      [product.productId]: {
+        productId: product.productId,
+        name: product.name,
+        category: product.category,
+        unit: product.unit,
+        price: product.price,
+        quantity: product.availableQuantity ?? 0,
+        isManual: true,
+        checked: true,
+      },
+    }));
+    setAddDialogOpen(false);
+    resetManualForm();
+  };
 
   const handleSave = async () => {
-    const products = Object.values(selection).map((sp) => ({
+    const products = Object.values(selection)
+      .filter((sp) => sp.checked)
+      .map((sp) => ({
       productId: sp.productId,
       name: sp.name,
       category: sp.category || undefined,
       unit: sp.unit || undefined,
       price: sp.price,
       quantity: sp.quantity,
+      ...(sp.isManual ? { isManual: true } : {}),
     }));
 
     const payload = {
@@ -185,6 +341,15 @@ export const ProductsManagementPage = () => {
       const body = await res.json().catch(() => null);
 
       if (res.ok && body?.success !== false) {
+        setSelection((prev) => {
+          const next: SelectionMap = {};
+          for (const sp of Object.values(prev)) {
+            if (sp.checked) {
+              next[sp.productId] = { ...sp, checked: true, wasSaved: true };
+            }
+          }
+          return next;
+        });
         setSaved(true);
         setDirty(false);
         await queryClient.invalidateQueries({
@@ -245,16 +410,97 @@ export const ProductsManagementPage = () => {
             }}
           />
           <Button
-            variant="contained"
-            color={saved && !dirty ? "success" : "primary"}
-            startIcon={saved && !dirty ? <CheckCircleIcon /> : <SaveIcon />}
-            onClick={handleSave}
-            disabled={saving || (saved && !dirty)}
+            variant="outlined"
+            color="warning"
+            startIcon={<AddCircleOutlineIcon />}
+            onClick={openAddManualDialog}
+            sx={{ whiteSpace: "nowrap" }}
           >
-            {saving ? "Saving…" : saved && !dirty ? "Saved" : "Save"}
+            Add Manual Product
+          </Button>
+          <Button
+            variant="contained"
+            color={!dirty && saved ? "success" : "primary"}
+            startIcon={!dirty && saved ? <CheckCircleIcon /> : <SaveIcon />}
+            onClick={handleSave}
+            disabled={saving || !dirty}
+          >
+            {saving ? "Saving…" : !dirty && saved ? "Saved" : "Save"}
           </Button>
         </Stack>
       </Stack>
+
+      {/* ── Manual Products ── */}
+      {manualInSelection.length > 0 && (
+        <>
+          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }} color="warning.main">
+            Manual Products ({manualInSelection.length})
+          </Typography>
+          <TableContainer component={Paper} variant="outlined" sx={{ mb: 3, overflowX: "auto", borderColor: "warning.light" }}>
+            <Table size="small" sx={{ minWidth: 600 }}>
+              <TableHead>
+                <TableRow sx={{ bgcolor: "warning.50" }}>
+                  <TableCell padding="checkbox" />
+                  <TableCell sx={{ fontWeight: 600 }}>Product</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Category</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Your Price (₹)</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Quantity</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {manualInSelection.map((sp) => (
+                  <TableRow
+                    key={sp.productId}
+                    hover
+                    onClick={() => toggleManualSelect(sp.productId)}
+                    sx={{
+                      cursor: "pointer",
+                      bgcolor: sp.checked ? "action.selected" : "action.hover",
+                      opacity: sp.checked ? 1 : 0.72,
+                    }}
+                  >
+                    <TableCell padding="checkbox">
+                      <Checkbox checked={sp.checked} tabIndex={-1} />
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" alignItems="center" spacing={0.75}>
+                        <Typography variant="body2" fontWeight={500}>{sp.name}</Typography>
+                        <Chip label="Manual" size="small" color="warning" variant="outlined" sx={{ height: 20, fontSize: "0.65rem" }} />
+                      </Stack>
+                      {sp.unit ? (
+                        <Typography variant="caption" color="text.secondary">per {sp.unit}</Typography>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">{sp.category || "—"}</Typography>
+                    </TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={sp.price}
+                        onChange={(e) => updateField(sp.productId, "price", e.target.value)}
+                        sx={{ width: 100 }}
+                        slotProps={{ htmlInput: { min: 0, step: 0.01, style: { textAlign: "right" } } }}
+                      />
+                    </TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      <TextField
+                        size="small"
+                        type="number"
+                        value={sp.quantity}
+                        onChange={(e) => updateField(sp.productId, "quantity", e.target.value)}
+                        sx={{ width: 90 }}
+                        slotProps={{ htmlInput: { min: 0, style: { textAlign: "right" } } }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </>
+      )}
 
       {/* ── Added Products ── */}
       {selectedFiltered.length > 0 && (
@@ -283,10 +529,14 @@ export const ProductsManagementPage = () => {
                       key={id}
                       hover
                       onClick={() => toggleSelect(product)}
-                      sx={{ cursor: "pointer", bgcolor: "action.selected" }}
+                      sx={{
+                        cursor: "pointer",
+                        bgcolor: sp.checked ? "action.selected" : "action.hover",
+                        opacity: sp.checked ? 1 : 0.72,
+                      }}
                     >
                       <TableCell padding="checkbox">
-                        <Checkbox checked tabIndex={-1} />
+                        <Checkbox checked={sp.checked} tabIndex={-1} />
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" fontWeight={500}>{product.name}</Typography>
@@ -390,6 +640,89 @@ export const ProductsManagementPage = () => {
           </Typography>
         </Paper>
       )}
+
+      <Dialog
+        open={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Add Manual Product</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Manual products are outlet-specific and tagged separately from the master catalog.
+            Save to make them available on the POS screen.
+          </Typography>
+          <Stack spacing={2} sx={{ pt: 0.5 }}>
+            <TextField
+              label="Product name"
+              value={manualName}
+              onChange={(e) => setManualName(e.target.value)}
+              required
+              autoFocus
+              fullWidth
+            />
+            {categoryOptions.length > 0 ? (
+              <FormControl fullWidth required>
+                <InputLabel id="manual-category-label">Category</InputLabel>
+                <Select
+                  labelId="manual-category-label"
+                  label="Category"
+                  value={manualCategory}
+                  onChange={(e) => setManualCategory(e.target.value)}
+                >
+                  {categoryOptions.map((cat) => (
+                    <MenuItem key={cat} value={cat}>
+                      {cat}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <Typography variant="body2" color="error">
+                No categories found in the master catalog. Load catalog products first.
+              </Typography>
+            )}
+            <TextField
+              label="Price (₹)"
+              type="number"
+              value={manualPrice}
+              onChange={(e) => setManualPrice(e.target.value)}
+              required
+              fullWidth
+              slotProps={{ htmlInput: { min: 0, step: 0.01 } }}
+            />
+            <TextField
+              label="Unit"
+              value={manualUnit}
+              onChange={(e) => setManualUnit(e.target.value)}
+              placeholder="e.g. kg, pcs"
+              required
+              fullWidth
+            />
+            <TextField
+              label="Quantity"
+              type="number"
+              value={manualQuantity}
+              onChange={(e) => setManualQuantity(e.target.value)}
+              required
+              fullWidth
+              slotProps={{ htmlInput: { min: 0 } }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={handleAddManualProduct}
+            disabled={!canSaveManual || categoryOptions.length === 0}
+          >
+            Add Product
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

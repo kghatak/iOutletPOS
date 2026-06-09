@@ -16,6 +16,7 @@ import IconButton from "@mui/material/IconButton";
 import Drawer from "@mui/material/Drawer";
 import Fab from "@mui/material/Fab";
 import Badge from "@mui/material/Badge";
+import Chip from "@mui/material/Chip";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import SearchIcon from "@mui/icons-material/Search";
@@ -90,17 +91,38 @@ function ProductCard({ product }: { product: Product }) {
   const atMax = stockCap != null && line != null && line.quantity >= stockCap;
 
   return (
-    <Card variant="outlined" sx={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <Card
+      variant="outlined"
+      sx={{
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        ...(product.isManual
+          ? { borderColor: "warning.light", bgcolor: "warning.50" }
+          : {}),
+      }}
+    >
       <CardContent sx={{ flexGrow: 1, p: 1.25, "&:last-child": { pb: 1.25 } }}>
-        <Typography
-          variant="body2"
-          fontWeight={600}
-          noWrap
-          title={product.name}
-          sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}
-        >
-          {product.name}
-        </Typography>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={0.5}>
+          <Typography
+            variant="body2"
+            fontWeight={600}
+            noWrap
+            title={product.name}
+            sx={{ fontSize: "0.72rem", lineHeight: 1.25, flex: 1, minWidth: 0 }}
+          >
+            {product.name}
+          </Typography>
+          {product.isManual ? (
+            <Chip
+              label="Manual"
+              size="small"
+              color="warning"
+              variant="outlined"
+              sx={{ height: 18, fontSize: "0.55rem", flexShrink: 0, "& .MuiChip-label": { px: 0.5 } }}
+            />
+          ) : null}
+        </Stack>
         {product.category ? (
           <Typography
             variant="caption"
@@ -336,7 +358,12 @@ export const ProductList = () => {
           ))}
         </Grid>
 
-        {products.length === 0 && <EmptyProductsState hasSearch={search.trim().length > 0} allCount={(listQuery.result?.data ?? []).length} />}
+        {products.length === 0 && (
+          <EmptyProductsState
+            hasSearch={search.trim().length > 0}
+            allCount={(listQuery.result?.data ?? []).length}
+          />
+        )}
       </Box>
 
       {/* ── Desktop: inline cart sidebar ── */}

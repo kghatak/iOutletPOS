@@ -150,9 +150,20 @@ function CartLineRow({
     <Box sx={{ py: 0.65 }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Box sx={{ flex: 1, mr: 0.75 }}>
-          <Typography variant="body2" fontWeight={500} noWrap sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}>
-            {line.name}
-          </Typography>
+          <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0 }}>
+            <Typography variant="body2" fontWeight={500} noWrap sx={{ fontSize: "0.72rem", lineHeight: 1.25 }}>
+              {line.name}
+            </Typography>
+            {line.isManual ? (
+              <Chip
+                label="Manual"
+                size="small"
+                color="warning"
+                variant="outlined"
+                sx={{ height: 16, fontSize: "0.5rem", "& .MuiChip-label": { px: 0.4 } }}
+              />
+            ) : null}
+          </Stack>
           {line.stockCap != null && (
             <Typography
               variant="caption"

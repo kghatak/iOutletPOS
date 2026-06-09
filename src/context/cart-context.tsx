@@ -83,11 +83,13 @@ function normalizeLines(raw: unknown): CartLine[] {
       stockCapRaw >= 0
         ? stockCapRaw
         : undefined;
+    const isManual = o.isManual === true;
     out.push({
       productId,
       name,
       unitPrice,
       quantity: q,
+      ...(isManual ? { isManual: true } : {}),
       ...(stockCap != null ? { stockCap } : {}),
       ...(pricedTotal != null ? { pricedTotal } : {}),
     });

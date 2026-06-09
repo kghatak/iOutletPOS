@@ -8,6 +8,8 @@ export type CartLine = {
   name: string;
   unitPrice: number;
   quantity: number;
+  /** True when line was added as a manual POS product (not from catalog). */
+  isManual?: boolean;
   /** Max allowed quantity (from outlet stock). Undefined means unlimited. */
   stockCap?: number;
   /**
@@ -122,6 +124,7 @@ export type SalePayloadLineItem = {
   unitPrice: number;
   quantity: number;
   lineTotal: number;
+  isManual?: boolean;
 };
 
 export function cartLinesToSalePayloadItems(lines: CartLine[]): SalePayloadLineItem[] {
@@ -137,6 +140,7 @@ export function cartLinesToSalePayloadItems(lines: CartLine[]): SalePayloadLineI
       unitPrice: l.unitPrice,
       quantity: q,
       lineTotal,
+      ...(l.isManual ? { isManual: true } : {}),
     };
   });
 }
@@ -151,5 +155,6 @@ export function productToLine(product: Product, quantity = 1): CartLine {
     unitPrice: product.price,
     quantity: normalizeCartQuantity(cap != null ? Math.min(quantity, cap) : quantity),
     stockCap: cap,
+    ...(product.isManual ? { isManual: true } : {}),
   };
 }
