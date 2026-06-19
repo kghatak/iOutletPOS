@@ -187,7 +187,7 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
     const billNo = displayBillNo(String(invoiceNo));
     const outletInfo = getSessionOutletPrintInfo();
     const displayOutletAddress = outletInfo.address || "Village Buchi, Pundri, Kaithal";
-    const displayOutletContact = outletInfo.primaryPhoneNumber || "98127-12739, 92559-19666";
+    const displayOutletGst = outletInfo.gstNo?.trim() || "";
     const splitPayments = data.payments ?? [];
     const showSplit =
       isSplitPaymentMode(paymentMode) && splitPayments.length > 0;
@@ -200,7 +200,9 @@ export function ThermalInvoicePdfDocument({ data }: Props) {
           <Text style={retail3.retailTitle}>RETAIL INVOICE</Text>
           <Text style={retail3.storeName}>NANNU MILK</Text>
           <Text style={retail3.centerLine}>Add: {displayOutletAddress}</Text>
-          <Text style={retail3.centerLine}>Mob: {displayOutletContact}</Text>
+          {displayOutletGst ? (
+            <Text style={retail3.centerLine}>GST: {displayOutletGst}</Text>
+          ) : null}
           <View style={retail3.rule} />
 
           <Text style={retail3.metaSingle}>

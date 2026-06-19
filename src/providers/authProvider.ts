@@ -16,6 +16,7 @@ type Session = {
   name: string;
   address?: string;
   primaryPhoneNumber?: string;
+  gstNo?: string;
   email?: string;
   id?: string;
   outletId?: string;
@@ -157,6 +158,7 @@ function pickSessionFields(
     outlet?.primaryPhoneNumber,
     outlet?.phoneNumber,
   );
+  const gstNo = pickText(data.gstNo, data.outletGstNo, outlet?.gstNo);
   const name =
     fromOutlet ||
     (typeof data.name === "string" && data.name.trim()) ||
@@ -174,6 +176,7 @@ function pickSessionFields(
     name,
     address,
     primaryPhoneNumber,
+    gstNo,
     email,
     id,
     outletId,
@@ -185,12 +188,14 @@ function pickSessionFields(
 export function getSessionOutletPrintInfo(): {
   address?: string;
   primaryPhoneNumber?: string;
+  gstNo?: string;
 } {
   try {
     const session = readSession();
     return {
       address: session?.address?.trim() || undefined,
       primaryPhoneNumber: session?.primaryPhoneNumber?.trim() || undefined,
+      gstNo: session?.gstNo?.trim() || undefined,
     };
   } catch {
     return {};
