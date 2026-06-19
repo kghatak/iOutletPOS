@@ -145,8 +145,7 @@ function buildThermalInvoiceHtml(data: InvoiceData): string {
   const outletInfo = getSessionOutletPrintInfo();
   const displayOutletAddress =
     outletInfo.address || "Village Buchi, Pundri, Kaithal";
-  const displayOutletContact =
-    outletInfo.primaryPhoneNumber || "98127-12739, 92559-19666";
+  const displayOutletGst = outletInfo.gstNo?.trim() || "";
   const paymentSection = renderPaymentSectionHtml(data);
 
   return `<!doctype html>
@@ -236,7 +235,11 @@ function buildThermalInvoiceHtml(data: InvoiceData): string {
   <div class="title">RETAIL INVOICE</div>
   <div class="store">NANNU MILK</div>
   <div class="center small">Add: ${escapeHtml(displayOutletAddress)}</div>
-  <div class="center small">Mob: ${escapeHtml(displayOutletContact)}</div>
+  ${
+    displayOutletGst
+      ? `<div class="center small">GST: ${escapeHtml(displayOutletGst)}</div>`
+      : ""
+  }
   <hr class="rule" />
 
   <div class="meta-single">Name: ${escapeHtml(
