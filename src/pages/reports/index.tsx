@@ -40,11 +40,15 @@ import {
   getOrderOutletId,
   getOrderAccount,
   getPaymentAmount,
-  getPaymentDate,
+  getPaymentDateForFilter,
   getPaymentOutletId,
   getPaymentMode,
   getPaymentRemarks,
   getPaymentStatus,
+  filterPaymentsByOutlet,
+  filterPaymentsByPaymentDateRange,
+  filterOrdersByDateRange,
+  filterReturnsByDateRange,
   getReturnAmount,
   getReturnDate,
   getReturnId,
@@ -54,6 +58,7 @@ import {
   getPendingAmount,
   toYMD,
   addDays,
+  parseYmd,
 } from "../../types/ledger";
 
 // ── Session helper ─────────────────────────────────────────────────
@@ -104,22 +109,29 @@ async function fetchAllPages(baseUrl: string, limit = 50): Promise<unknown[]> {
   return all;
 }
 
-async function fetchPayments(start: string, end: string): Promise<RawPayment[]> {
-  const url = `${API_BASE_URL}/payments/report?startDate=${start}&endDate=${end}`;
-  const body = await fetchJson(url);
-  return unwrapArray(body) as RawPayment[];
+async function fetchPayments(
+  start: string,
+  end: string,
+  outletId: string,
+): Promise<RawPayment[]> {
+  // API filters by createdAt; widen fetch then filter by paymentDate (matches order-admin).
+  const apiStart = toYMD(addDays(parseYmd(start), -90));
+  const apiEnd = toYMD(addDays(parseYmd(end), 30));
+  const url = `${API_BASE_URL}/payments/report?startDate=${apiStart}&endDate=${apiEnd}&outletId=${encodeURIComponent(outletId)}`;
+  const rows = await fetchAllPages(url);
+  return filterPaymentsByPaymentDateRange(rows as RawPayment[], start, end);
 }
 
 async function fetchOrders(start: string, end: string, outletId: string): Promise<RawOrder[]> {
   const url = `${API_BASE_URL}/orders/report?startDate=${start}&endDate=${end}&outletId=${outletId}`;
   const rows = await fetchAllPages(url);
-  return rows as RawOrder[];
+  return filterOrdersByDateRange(rows as RawOrder[], start, end);
 }
 
 async function fetchReturns(start: string, end: string, outletId: string): Promise<RawReturn[]> {
   const url = `${API_BASE_URL}/returns/report?startDate=${start}&endDate=${end}&outletId=${outletId}`;
-  const body = await fetchJson(url);
-  return unwrapArray(body) as RawReturn[];
+  const rows = await fetchAllPages(url);
+  return filterReturnsByDateRange(rows as RawReturn[], start, end);
 }
 
 // ── Item enrichment ───────────────────────────────────────────────
@@ -232,7 +244,8 @@ function assembleLedger(opts: AssembleOpts): LedgerEntry[] {
     const amt = getPaymentAmount(p);
     if (amt <= 0) continue;
 
-    const d = getPaymentDate(p);
+    const d = getPaymentDateForFilter(p);
+    if (!d) continue;
     const mode = getPaymentMode(p);
     const dateKey = toYMD(d);
     const groupKey = `${dateKey}_${mode}`;
@@ -398,14 +411,12 @@ export const ReportsPage = () => {
 
         const [ordersRaw, paymentsRaw, returnsRaw, balanceRows] = await Promise.all([
           fetchOrders(startDate, endDate, outletId),
-          fetchPayments(startDate, endDate),
+          fetchPayments(startDate, endDate, outletId),
           fetchReturns(startDate, endDate, outletId),
           fetchOpeningBalance(dayBeforeStart).catch(() => [] as RawBalanceRow[]),
         ]);
 
-        const payments = paymentsRaw.filter(
-          (p) => !getPaymentOutletId(p) || getPaymentOutletId(p) === outletId,
-        );
+        const payments = filterPaymentsByOutlet(paymentsRaw, outletId);
 
         let openingBalance = getBalanceForOutlet(balanceRows, outletId);
         if (openingBalance === null) {

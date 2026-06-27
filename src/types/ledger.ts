@@ -188,12 +188,32 @@ export function getOrderAccount(o: RawOrder): string {
 }
 
 export function getPaymentAmount(p: RawPayment): number {
-  const v = p.amount ?? p.Amount;
+  const v = (p as { receivedAmount?: number }).receivedAmount ?? p.amount ?? p.Amount;
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
+/** Payment date for ledger filtering — paymentDate first, then legacy fallbacks. */
+export function getPaymentDateForFilter(p: RawPayment): Date | null {
+  return (
+    tsToDate(p.paymentDate ?? p.PaymentDate) ??
+    tsToDate(p.approvedAt) ??
+    tsToDate(p.createdAt ?? p.CreatedAt ?? p.date)
+  );
+}
+
 export function getPaymentDate(p: RawPayment): Date {
-  return tsToDate(p.paymentDate ?? p.PaymentDate) ?? tsToDate(p.approvedAt) ?? tsToDate(p.createdAt ?? p.CreatedAt ?? p.date) ?? new Date();
+  return getPaymentDateForFilter(p) ?? new Date();
+}
+
+export function paymentMatchesOutlet(p: RawPayment, outletId: string): boolean {
+  const paymentOutletId = getPaymentOutletId(p);
+  if (!paymentOutletId) return true;
+  return paymentOutletId.toLowerCase() === outletId.toLowerCase();
+}
+
+export function filterPaymentsByOutlet(payments: RawPayment[], outletId: string): RawPayment[] {
+  if (!outletId) return payments;
+  return payments.filter((p) => paymentMatchesOutlet(p, outletId));
 }
 
 export function getPaymentId(p: RawPayment): string {
@@ -303,4 +323,45 @@ export function addDays(d: Date, n: number): Date {
   const copy = new Date(d);
   copy.setDate(copy.getDate() + n);
   return copy;
+}
+
+export function parseYmd(ymd: string): Date {
+  const [y, m, day] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, day);
+}
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+export function isDateInYmdRange(d: Date, startYmd: string, endYmd: string): boolean {
+  const t = startOfDay(d);
+  return t >= startOfDay(parseYmd(startYmd)) && t <= startOfDay(parseYmd(endYmd));
+}
+
+export function filterOrdersByDateRange(
+  orders: RawOrder[],
+  startDate: string,
+  endDate: string,
+): RawOrder[] {
+  return orders.filter((o) => isDateInYmdRange(getOrderDate(o), startDate, endDate));
+}
+
+export function filterReturnsByDateRange(
+  returns: RawReturn[],
+  startDate: string,
+  endDate: string,
+): RawReturn[] {
+  return returns.filter((r) => isDateInYmdRange(getReturnDate(r), startDate, endDate));
+}
+
+export function filterPaymentsByPaymentDateRange(
+  payments: RawPayment[],
+  startDate: string,
+  endDate: string,
+): RawPayment[] {
+  return payments.filter((p) => {
+    const d = getPaymentDateForFilter(p);
+    return d != null && isDateInYmdRange(d, startDate, endDate);
+  });
 }

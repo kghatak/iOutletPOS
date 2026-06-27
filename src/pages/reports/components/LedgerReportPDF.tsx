@@ -155,10 +155,79 @@ const colWidths = {
   debit:     "12%",
   credit:    "12%",
   balance:   "14%",
-  narration: "7%",
+  narration: "10%",
 };
 
-const ROWS_PER_PAGE = 30;
+const LEDGER_PAGE_HEIGHT = 842;
+const LEDGER_RESERVED_HEIGHT = {
+  pagePadding: 30,
+  containerPadding: 24,
+  firstPageHeader: 150,
+  continuationHeader: 85,
+  dateRangeRow: 36,
+  tableHeader: 28,
+  totalsBdRow: 28,
+  totalsRow: 28,
+  footer: 32,
+  tableBorder: 6,
+};
+
+const estimateLedgerRowHeight = (entry: LedgerEntry): number => {
+  const baseHeight = 22;
+  const narration = entry.narration?.trim();
+  if (!narration) {
+    return baseHeight;
+  }
+  const extraLines = Math.max(0, Math.ceil(narration.length / 32) - 1);
+  return baseHeight + extraLines * 11;
+};
+
+const getAvailableLedgerRowHeight = (pageIndex: number): number => {
+  const r = LEDGER_RESERVED_HEIGHT;
+  let used =
+    r.pagePadding +
+    r.containerPadding +
+    r.tableHeader +
+    r.totalsRow +
+    r.footer +
+    r.tableBorder;
+
+  if (pageIndex === 0) {
+    used += r.firstPageHeader + r.dateRangeRow;
+  } else {
+    used += r.continuationHeader + r.totalsBdRow;
+  }
+
+  return LEDGER_PAGE_HEIGHT - used;
+};
+
+const paginateLedgerEntries = (entries: LedgerEntry[]): LedgerEntry[][] => {
+  const pages: LedgerEntry[][] = [];
+  let currentPage: LedgerEntry[] = [];
+  let usedHeight = 0;
+  let pageIndex = 0;
+
+  entries.forEach((entry) => {
+    const rowHeight = estimateLedgerRowHeight(entry);
+    const capacity = getAvailableLedgerRowHeight(pageIndex);
+
+    if (currentPage.length > 0 && usedHeight + rowHeight > capacity) {
+      pages.push(currentPage);
+      currentPage = [];
+      usedHeight = 0;
+      pageIndex += 1;
+    }
+
+    currentPage.push(entry);
+    usedHeight += rowHeight;
+  });
+
+  if (currentPage.length > 0) {
+    pages.push(currentPage);
+  }
+
+  return pages.length > 0 ? pages : [[]];
+};
 
 export const LedgerReportPDF: React.FC<LedgerReportPDFProps> = ({
   entries,
@@ -207,15 +276,14 @@ export const LedgerReportPDF: React.FC<LedgerReportPDFProps> = ({
     );
   }
 
-  const totalPages = Math.max(1, Math.ceil(entries.length / ROWS_PER_PAGE));
+  const entryPages = paginateLedgerEntries(entries);
+  const totalPages = entryPages.length;
   const pages: React.ReactElement[] = [];
 
-  for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-    const start       = pageIndex * ROWS_PER_PAGE;
-    const end         = Math.min(start + ROWS_PER_PAGE, entries.length);
-    const pageEntries = entries.slice(start, end);
+  entryPages.forEach((pageEntries, pageIndex) => {
+    const start = pageEntries.length > 0 ? pageEntries[0].globalIndex : 0;
+    const end = pageEntries.length > 0 ? pageEntries[pageEntries.length - 1].globalIndex + 1 : 0;
     const isLastPage  = pageIndex === totalPages - 1;
-    const isFirstPage = pageIndex === 0;
 
     const prevEntry            = start > 0 ? entries[start - 1] : null;
     const prevCumulativeDebit  = prevEntry ? prevEntry.cumulativeDebit  : 0;
@@ -232,20 +300,20 @@ export const LedgerReportPDF: React.FC<LedgerReportPDFProps> = ({
             <Text style={styles.companyName}>NANNU AGRO PRIVATE LIMITED</Text>
             <Text style={styles.companyAddress}>Village Buchi, Pundri, Kaithal</Text>
             <Text style={styles.gstin}>GSTIN : 06AAECN2051P1ZB</Text>
-            {isFirstPage ? (
+            {totalPages > 1 && pageIndex > 0 ? (
+              <Text style={styles.pageInfo}>
+                Page {pageIndex + 1} ; Account Ledger : Account : {outletName} : From {fmtStart} to {fmtEnd}
+              </Text>
+            ) : (
               <>
                 <Text style={styles.reportTitle}>Account Ledger</Text>
                 <Text style={styles.accountInfo}>Account : {outletName}</Text>
               </>
-            ) : (
-              <Text style={styles.pageInfo}>
-                Page {pageIndex + 1} ; Account Ledger : Account : {outletName} : From {fmtStart} to {fmtEnd}
-              </Text>
             )}
           </View>
 
           {/* ── Date range + Opening balance (first page only) ── */}
-          {isFirstPage && (
+          {!(totalPages > 1 && pageIndex > 0) && (
             <View style={styles.dateRangeRow}>
               <Text style={styles.openingBalanceText}>Date Range : {fmtStart} to {fmtEnd}</Text>
               <Text style={styles.openingBalanceText}>
@@ -255,10 +323,10 @@ export const LedgerReportPDF: React.FC<LedgerReportPDFProps> = ({
           )}
 
           {/* ── Table ── */}
-          <View style={styles.table}>
+          <View style={styles.table} wrap={false}>
 
             {/* Table header row */}
-            <View style={styles.tableHeader}>
+            <View style={styles.tableHeader} fixed>
               <Text style={[styles.tableHeaderCell, { width: colWidths.date }]}>Date</Text>
               <Text style={[styles.tableHeaderCell, { width: colWidths.type }]}>Type</Text>
               <Text style={[styles.tableHeaderCell, { width: colWidths.vchBillNo }]}>Vch/Bill No</Text>
@@ -294,11 +362,10 @@ export const LedgerReportPDF: React.FC<LedgerReportPDFProps> = ({
                 entry.globalIndex === 0 ||
                 formatDateDDMMYYYY(entries[entry.globalIndex - 1].date) !== dateStr;
 
-              const hasLongNarration = entry.narration && entry.narration.length > 25;
-              const rowMinHeight = hasLongNarration ? 40 : 20;
+              const rowMinHeight = estimateLedgerRowHeight(entry);
 
               return (
-                <View key={entry.globalIndex} style={[styles.tableRow, { minHeight: rowMinHeight }]}>
+                <View key={entry.globalIndex} style={[styles.tableRow, { minHeight: rowMinHeight }]} wrap={false}>
                   <Text style={[styles.tableCell, styles.tableCellCenter, { width: colWidths.date }]}>
                     {isFirstInGroup ? dateStr : ""}
                   </Text>
@@ -361,7 +428,7 @@ export const LedgerReportPDF: React.FC<LedgerReportPDFProps> = ({
         </View>
       </Page>,
     );
-  }
+  });
 
   return <Document>{pages}</Document>;
 };
