@@ -1,6 +1,6 @@
 import type { FC } from "react";
-import { Authenticated, Refine, useLink } from "@refinedev/core";
-import {
+import { useEffect, useMemo, useState } from "react";
+import { Authenticated, Refine, useLink } from "@refinedev/core";import {
   useNotificationProvider,
   RefineSnackbarProvider,
   ThemedLayout,
@@ -30,7 +30,7 @@ import { dataProvider } from "./providers/dataProvider";
 import { startSyncService } from "./utils/syncService";
 
 startSyncService();
-import { authProvider } from "./providers/authProvider";
+import { authProvider, AUTH_UPDATED_EVENT, SESSION_END_EVENT, getSessionUserProfile } from "./providers/authProvider";
 import { OutletProvider } from "./context/outlet-context";
 import { CartProvider } from "./context/cart-context";
 import { ProductList } from "./pages/products/list";
@@ -48,6 +48,24 @@ import { AppLayoutHeader } from "./components/AppLayoutHeader";
 import { SiderLogoutButton } from "./components/SiderLogoutButton";
 
 const BRAND_ICON_SRC = "/nannu-milk-icon.png";
+
+const STOREKEEPER_PROFILE = "OutletStorekeeper";
+
+function useSessionUserProfile(): string | undefined {
+  const [userProfile, setUserProfile] = useState(getSessionUserProfile);
+
+  useEffect(() => {
+    const sync = () => setUserProfile(getSessionUserProfile());
+    window.addEventListener(AUTH_UPDATED_EVENT, sync);
+    window.addEventListener(SESSION_END_EVENT, sync);
+    return () => {
+      window.removeEventListener(AUTH_UPDATED_EVENT, sync);
+      window.removeEventListener(SESSION_END_EVENT, sync);
+    };
+  }, []);
+
+  return userProfile;
+}
 
 const AppTitle: FC<{ collapsed: boolean }> = ({ collapsed }) => {
   const Link = useLink();
@@ -104,8 +122,69 @@ const appTheme = createTheme(RefineThemes.Blue, {
 });
 
 function App() {
-  return (
-    <BrowserRouter>
+  const userProfile = useSessionUserProfile();
+  const showReports = userProfile !== STOREKEEPER_PROFILE;
+
+  const resources = useMemo(
+    () =>
+      [
+        {
+          name: "products",
+          list: "/products",
+          meta: {
+            label: "POS",
+            icon: <StorefrontOutlinedIcon />,
+          },
+        },
+        {
+          name: "products-management",
+          list: "/products-management",
+          meta: {
+            label: "Products Management",
+            icon: <InventoryOutlinedIcon />,
+          },
+        },
+        {
+          name: "sales",
+          list: "/sales",
+          meta: {
+            label: "Sales",
+            icon: <PointOfSaleOutlinedIcon />,
+          },
+        },
+        {
+          name: "expenses",
+          list: "/expenses",
+          meta: {
+            label: "Expenses",
+            icon: <ReceiptLongOutlinedIcon />,
+          },
+        },
+        ...(showReports
+          ? [
+              {
+                name: "reports",
+                list: "/reports",
+                meta: {
+                  label: "Reports",
+                  icon: <AssessmentOutlinedIcon />,
+                },
+              },
+            ]
+          : []),
+        {
+          name: "wastage",
+          list: "/wastage",
+          meta: {
+            label: "Wastage Details",
+            icon: <DeleteSweepOutlinedIcon />,
+          },
+        },
+      ],
+    [showReports],
+  );
+
+  return (    <BrowserRouter>
       <ThemeProvider theme={appTheme}>
         <CssBaseline />
         <GlobalStyles styles={{ html: { WebkitFontSmoothing: "auto" } }} />
@@ -117,56 +196,7 @@ function App() {
                 dataProvider={dataProvider}
                 authProvider={authProvider}
                 notificationProvider={useNotificationProvider}
-                resources={[
-                  {
-                    name: "products",
-                    list: "/products",
-                    meta: {
-                      label: "POS",
-                      icon: <StorefrontOutlinedIcon />,
-                    },
-                  },
-                  {
-                    name: "products-management",
-                    list: "/products-management",
-                    meta: {
-                      label: "Products Management",
-                      icon: <InventoryOutlinedIcon />,
-                    },
-                  },
-                  {
-                    name: "sales",
-                    list: "/sales",
-                    meta: {
-                      label: "Sales",
-                      icon: <PointOfSaleOutlinedIcon />,
-                    },
-                  },
-                  {
-                    name: "expenses",
-                    list: "/expenses",
-                    meta: {
-                      label: "Expenses",
-                      icon: <ReceiptLongOutlinedIcon />,
-                    },
-                  },
-                  {
-                    name: "reports",
-                    list: "/reports",
-                    meta: {
-                      label: "Reports",
-                      icon: <AssessmentOutlinedIcon />,
-                    },
-                  },
-                  {
-                    name: "wastage",
-                    list: "/wastage",
-                    meta: {
-                      label: "Wastage Details",
-                      icon: <DeleteSweepOutlinedIcon />,
-                    },
-                  },
-                ]}
+                resources={resources}
                 options={{
                   syncWithLocation: true,
                   warnWhenUnsavedChanges: true,
@@ -233,7 +263,11 @@ function App() {
                     <Route path="/cart" element={<Navigate to="/products" replace />} />
                     <Route path="/expenses/:dateKey/view" element={<ExpenseDateViewPage />} />
                     <Route path="/expenses" element={<ExpensePage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
+                    {showReports ? (
+                      <Route path="/reports" element={<ReportsPage />} />
+                    ) : (
+                      <Route path="/reports" element={<Navigate to="/products" replace />} />
+                    )}
                     <Route path="/wastage" element={<WastagePage />} />
                     <Route path="*" element={<ErrorComponent />} />
                   </Route>
