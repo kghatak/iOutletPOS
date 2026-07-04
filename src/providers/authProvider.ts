@@ -22,6 +22,7 @@ type Session = {
   outletId?: string;
   tenantId?: string;
   userId?: string;
+  userProfile?: string;
   /** Bearer / JWT when the API returns one; optional if auth is cookie-only. */
   token?: string;
 };
@@ -43,6 +44,16 @@ function readSession(): Session | null {
  * (written at login; includes `tenantId` from `data.tenantId`).
  */
 /** Returns the `name` stored in the session — shown in the app header, used as cashier on invoices. */
+export function getSessionUserProfile(): string | undefined {
+  try {
+    const session = readSession();
+    const profile = session?.userProfile?.trim();
+    return profile || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function getSessionCashierName(): string | undefined {
   try {
     const session = readSession();
@@ -170,6 +181,8 @@ function pickSessionFields(
   const tenantId = typeof data.tenantId === "string" ? data.tenantId : undefined;
   const id = userId ?? outletId;
   const email = typeof data.email === "string" ? data.email : undefined;
+  const userProfile =
+    typeof data.userProfile === "string" ? data.userProfile : undefined;
 
   return {
     phoneNumber,
@@ -182,6 +195,7 @@ function pickSessionFields(
     outletId,
     tenantId,
     userId,
+    userProfile,
   };
 }
 
