@@ -27,9 +27,6 @@ import Typography from "@mui/material/Typography";
 import MuiLink from "@mui/material/Link";
 
 import { dataProvider } from "./providers/dataProvider";
-import { startSyncService } from "./utils/syncService";
-
-startSyncService();
 import { authProvider, AUTH_UPDATED_EVENT, SESSION_END_EVENT, getSessionUserProfile } from "./providers/authProvider";
 import { OutletProvider } from "./context/outlet-context";
 import { CartProvider } from "./context/cart-context";

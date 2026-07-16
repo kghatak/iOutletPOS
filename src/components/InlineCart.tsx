@@ -16,7 +16,6 @@ import AddIcon from "@mui/icons-material/Add";
 import ShoppingCartCheckoutIcon from "@mui/icons-material/ShoppingCartCheckout";
 import PrintIcon from "@mui/icons-material/Print";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import WifiOffIcon from "@mui/icons-material/WifiOff";
 import Chip from "@mui/material/Chip";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys, useNotification } from "@refinedev/core";
@@ -38,7 +37,6 @@ import {
   printThermalInvoice,
   type InvoiceData,
 } from "../utils/thermalInvoice";
-import { enqueueOrder, removeFromQueue } from "../utils/offlineQueue";
 import {
   extractCreatedSaleId,
   extractSalesCreateFailureHint,
@@ -402,7 +400,6 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
     trimmedCustomerName.length > 0 && trimmedCustomerPhone.length >= 10;
 
   const [lastOrder, setLastOrder] = useState<InvoiceData | null>(null);
-  const [savedOffline, setSavedOffline] = useState(false);
   const lastOrderRef = useRef(lastOrder);
   lastOrderRef.current = lastOrder;
 
@@ -413,7 +410,6 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
   const handleNewOrder = useCallback(() => {
     setLastOrder(null);
-    setSavedOffline(false);
     setPaymentMode("Cash");
     setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
   }, []);
@@ -498,43 +494,37 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
     setSubmitting(mode);
     try {
-      // Always enqueue first — guarantees the order is never lost
-      const queued = enqueueOrder(payload as Record<string, unknown>, invoiceData);
-      invoiceData.invoiceNo = queued.localId;
+      const res = await fetch(getSalesCreatePostUrl(), {
+        method: "POST",
+        headers: getApiHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const body: unknown = await res.json().catch(() => null);
 
-      let syncedOk = false;
-      try {
-        const res = await fetch(getSalesCreatePostUrl(), {
-          method: "POST",
-          headers: getApiHeaders(),
-          body: JSON.stringify(payload),
+      if (!isSalesCreateResponseSuccess(res, body)) {
+        const hint = extractSalesCreateFailureHint(res, body);
+        console.error("Order API not accepted:", hint, body);
+        notification.open?.({
+          type: "error",
+          message: "Order failed",
+          description: hint || "Could not place order. Please try again.",
         });
-        const body: unknown = await res.json().catch(() => null);
-
-        if (isSalesCreateResponseSuccess(res, body)) {
-          const saleId = extractCreatedSaleId(body);
-          removeFromQueue(queued.localId);
-          invoiceData.invoiceNo = saleId || invoiceData.invoiceNo;
-          syncedOk = true;
-          await queryClient.invalidateQueries({
-            queryKey: keys().data().resource("sales").action("list").get(),
-          });
-        } else {
-          const hint = extractSalesCreateFailureHint(res, body);
-          console.error("Order API not accepted:", hint, body);
-        }
-      } catch (err) {
-        console.error("Order create network error — kept in offline queue:", err);
+        return;
       }
+
+      const saleId = extractCreatedSaleId(body);
+      invoiceData.invoiceNo = saleId || invoiceData.invoiceNo;
+
+      await queryClient.invalidateQueries({
+        queryKey: keys().data().resource("sales").action("list").get(),
+      });
 
       if (mode === "print") {
         void printThermalInvoice(invoiceData).catch(console.error);
         setLastOrder(invoiceData);
-        setSavedOffline(!syncedOk);
       } else {
         // "Save & New Order": no receipt, no success screen — go straight to a fresh cart.
         setLastOrder(null);
-        setSavedOffline(false);
         setPaymentMode("Cash");
       }
 
@@ -547,6 +537,13 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
       onOrderPlaced?.();
       if (mode === "new") onNewOrder?.();
+    } catch (err) {
+      console.error("Order create network error:", err);
+      notification.open?.({
+        type: "error",
+        message: "Order failed",
+        description: "Network error. Please check your connection and try again.",
+      });
     } finally {
       setSubmitting(false);
     }
@@ -556,23 +553,10 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
   if (lastOrder) {
     return (
       <Box sx={{ display: "flex", flexDirection: "column", height: "100%", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 1.5, py: 3 }}>
-        {savedOffline ? (
-          <WifiOffIcon sx={{ fontSize: 48, color: "warning.main" }} />
-        ) : (
-          <CheckCircleOutlineIcon sx={{ fontSize: 48, color: "success.main" }} />
-        )}
+        <CheckCircleOutlineIcon sx={{ fontSize: 48, color: "success.main" }} />
         <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.88rem" }}>
-          {savedOffline ? "Order Saved Offline" : "Order Placed!"}
+          Order Placed!
         </Typography>
-        {savedOffline && (
-          <Chip
-            icon={<WifiOffIcon />}
-            label="Pending sync — will upload when connected"
-            color="warning"
-            size="small"
-            variant="outlined"
-          />
-        )}
         <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: "0.68rem" }}>
           Invoice: {lastOrder.invoiceNo}
         </Typography>

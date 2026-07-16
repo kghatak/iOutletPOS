@@ -25,8 +25,6 @@ import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import EditIcon from "@mui/icons-material/Edit";
 import PrintIcon from "@mui/icons-material/Print";
-import SyncIcon from "@mui/icons-material/Sync";
-import WifiOffIcon from "@mui/icons-material/WifiOff";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys, useNotification } from "@refinedev/core";
 import { buildSaleUpdatePayload, patchSale } from "../api/saleUpdate";
@@ -162,11 +160,9 @@ function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
 function RowActions({
   row,
   onEdit,
-  onRetrySync,
 }: {
   row: SalesGridRow;
   onEdit: (row: SalesGridRow) => void;
-  onRetrySync?: (localId: string) => void;
 }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
 
@@ -174,8 +170,6 @@ function RowActions({
     setAnchor(null);
     void printThermalInvoice(saleRowToInvoiceData(row)).catch(console.error);
   };
-
-  const isPending = row.pendingSync || row.syncFailed;
 
   return (
     <>
@@ -193,32 +187,19 @@ function RowActions({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        {!isPending && (
-          <MenuItem
-            onClick={() => {
-              setAnchor(null);
-              onEdit(row);
-            }}
-          >
-            <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>Edit</ListItemText>
-          </MenuItem>
-        )}
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onEdit(row);
+          }}
+        >
+          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Edit</ListItemText>
+        </MenuItem>
         <MenuItem onClick={handlePrint}>
           <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Print Invoice</ListItemText>
         </MenuItem>
-        {row.syncFailed && row.localId && (
-          <MenuItem
-            onClick={() => {
-              setAnchor(null);
-              onRetrySync?.(row.localId!);
-            }}
-          >
-            <ListItemIcon><SyncIcon fontSize="small" /></ListItemIcon>
-            <ListItemText>Retry Sync</ListItemText>
-          </MenuItem>
-        )}
       </Menu>
     </>
   );
@@ -280,21 +261,16 @@ type SalesHistoryGridProps = {
   rows: SalesGridRow[];
   loading: boolean;
   error: boolean;
-  onRetrySync?: (localId: string) => void;
   /** Show Collected control (PATCH sale payment to Cash / Card / UPI). */
   dueCollectionMode?: boolean;
   /** Title shown above the grid */
   listTitle?: string;
-  /** Server-driven paging (omit for a simple unpaginated table, e.g. offline queue only). */
+  /** Server-driven paging. */
   serverPagination?: {
     rowCount: number;
     paginationModel: GridPaginationModel;
     onPaginationModelChange: (model: GridPaginationModel) => void;
   };
-  /** Compact table — no paging footer / export (offline queue slice). */
-  compactTable?: boolean;
-  /** Omit Export CSV (queue block). */
-  hideExport?: boolean;
   /** Extra controls shown before Export (e.g. Item summary link). */
   toolbarExtra?: ReactNode;
 };
@@ -303,12 +279,9 @@ export function SalesHistoryGrid({
   rows,
   loading,
   error,
-  onRetrySync,
   dueCollectionMode = false,
   listTitle = "Sales",
   serverPagination,
-  compactTable = false,
-  hideExport = false,
   toolbarExtra,
 }: SalesHistoryGridProps) {
   const queryClient = useQueryClient();
@@ -423,29 +396,6 @@ export function SalesHistoryGrid({
         flex: 0.5,
         minWidth: 80,
         renderCell: (params) => {
-          const row = params.row;
-          if (row.syncFailed) {
-            return (
-              <Chip
-                icon={<WifiOffIcon />}
-                label="Sync failed"
-                color="error"
-                size="small"
-                variant="outlined"
-              />
-            );
-          }
-          if (row.pendingSync) {
-            return (
-              <Chip
-                icon={<WifiOffIcon />}
-                label="Pending sync"
-                color="warning"
-                size="small"
-                variant="outlined"
-              />
-            );
-          }
           return <Typography variant="body2">{params.value as string}</Typography>;
         },
       },
@@ -504,7 +454,7 @@ export function SalesHistoryGrid({
               headerAlign: "center",
               renderCell: (params: { row: SalesGridRow }) => {
                 const row = params.row;
-                if (row.pendingSync || row.syncFailed || !row.documentId) {
+                if (!row.documentId) {
                   return (
                     <Typography variant="caption" color="text.disabled">
                       —
@@ -531,13 +481,6 @@ export function SalesHistoryGrid({
               sortable: false,
               renderCell: (params: { row: SalesGridRow }) => {
                 const row = params.row;
-                if (row.pendingSync || row.syncFailed) {
-                  return (
-                    <Typography variant="caption" color="text.secondary">
-                      —
-                    </Typography>
-                  );
-                }
                 if (isSalePaymentDue(row.paymentMode)) {
                   return (
                     <Chip
@@ -620,13 +563,12 @@ export function SalesHistoryGrid({
         <RowActions
           row={params.row}
           onEdit={(r) => setEditRow(r)}
-          onRetrySync={onRetrySync}
         />
       ),
     });
 
     return base;
-  }, [dueCollectionMode, collectingId, collectDuePayment, onRetrySync, dueRowGrouping]);
+  }, [dueCollectionMode, collectingId, collectDuePayment, dueRowGrouping]);
 
   const header = (
     <Stack
@@ -635,27 +577,23 @@ export function SalesHistoryGrid({
       alignItems="center"
       flexWrap="wrap"
       gap={2}
-      sx={{ mb: compactTable ? 1 : 2 }}
+      sx={{ mb: 2 }}
     >
-      <Typography variant={compactTable ? "subtitle1" : "h5"} component="h1">
+      <Typography variant="h5" component="h1">
         {listTitle}
       </Typography>
-      {!hideExport || toolbarExtra != null ? (
-        <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1}>
-          {toolbarExtra}
-          {!hideExport && (
-            <Button
-              variant="outlined"
-              size="medium"
-              startIcon={<FileDownloadOutlinedIcon />}
-              disabled={gridRows.length === 0 || loading}
-              onClick={() => downloadSalesCsv(gridRows)}
-            >
-              Export
-            </Button>
-          )}
-        </Stack>
-      ) : null}
+      <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1}>
+        {toolbarExtra}
+        <Button
+          variant="outlined"
+          size="medium"
+          startIcon={<FileDownloadOutlinedIcon />}
+          disabled={gridRows.length === 0 || loading}
+          onClick={() => downloadSalesCsv(gridRows)}
+        >
+          Export
+        </Button>
+      </Stack>
     </Stack>
   );
 
@@ -702,32 +640,18 @@ export function SalesHistoryGrid({
             columns={columns}
             disableRowSelectionOnClick
             pageSizeOptions={[10, 25, 50, 100]}
-            {...(compactTable
+            {...(serverPagination
               ? {
-                  hideFooter: true as const,
-                  paginationMode: "client" as const,
-                  paginationModel: {
-                    page: 0,
-                    pageSize: Math.max(gridRows.length, 1),
-                  },
-                  onPaginationModelChange: (
-                    _: GridPaginationModel,
-                  ): void => {
-                    /** Single-page block; paging UI hidden via hideFooter. */
-                  },
+                  paginationMode: "server" as const,
+                  rowCount: Math.max(serverPagination.rowCount, 0),
+                  paginationModel: serverPagination.paginationModel,
+                  onPaginationModelChange: serverPagination.onPaginationModelChange,
                 }
-              : serverPagination
-                ? {
-                    paginationMode: "server" as const,
-                    rowCount: Math.max(serverPagination.rowCount, 0),
-                    paginationModel: serverPagination.paginationModel,
-                    onPaginationModelChange: serverPagination.onPaginationModelChange,
-                  }
-                : {
-                    paginationMode: "client" as const,
-                  })}
+              : {
+                  paginationMode: "client" as const,
+                })}
             initialState={{
-              ...(!compactTable && !serverPagination
+              ...(!serverPagination
                 ? { pagination: { paginationModel: { pageSize: 10 } } }
                 : {}),
               sorting: {
@@ -737,11 +661,10 @@ export function SalesHistoryGrid({
             sx={{
               minWidth: 600,
               width: "100%",
-              ...(!compactTable ? { height: 560 } : {}),
+              height: 560,
               "& .MuiDataGrid-columnHeaderTitle": { fontWeight: 600 },
               "& .MuiDataGrid-cell": { alignItems: "center", display: "flex" },
             }}
-            autoHeight={compactTable}
             disableColumnResize={false}
           />
         </Box>
