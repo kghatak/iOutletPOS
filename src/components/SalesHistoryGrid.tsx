@@ -25,9 +25,11 @@ import FileDownloadOutlinedIcon from "@mui/icons-material/FileDownloadOutlined";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
 import EditIcon from "@mui/icons-material/Edit";
 import PrintIcon from "@mui/icons-material/Print";
+import SendIcon from "@mui/icons-material/Send";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys, useNotification } from "@refinedev/core";
 import { buildSaleUpdatePayload, patchSale } from "../api/saleUpdate";
+import { resendSaleBillWhatsApp } from "../api/saleBillWhatsApp";
 import { useOutlet } from "../context/outlet-context";
 import type { SalesGridRow } from "../types/sale";
 import {
@@ -160,11 +162,16 @@ function saleRowToInvoiceData(row: SalesGridRow): InvoiceData {
 function RowActions({
   row,
   onEdit,
+  onResendWhatsApp,
+  resending,
 }: {
   row: SalesGridRow;
   onEdit: (row: SalesGridRow) => void;
+  onResendWhatsApp: (row: SalesGridRow) => void;
+  resending: boolean;
 }) {
   const [anchor, setAnchor] = useState<null | HTMLElement>(null);
+  const canWhatsApp = normalizePhoneGroupKey(row.customer?.phone ?? "").length >= 10;
 
   const handlePrint = () => {
     setAnchor(null);
@@ -200,6 +207,24 @@ function RowActions({
           <ListItemIcon><PrintIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Print Invoice</ListItemText>
         </MenuItem>
+        {canWhatsApp && (
+          <MenuItem
+            disabled={resending}
+            onClick={() => {
+              setAnchor(null);
+              onResendWhatsApp(row);
+            }}
+          >
+            <ListItemIcon>
+              {resending ? (
+                <CircularProgress size={18} />
+              ) : (
+                <SendIcon fontSize="small" />
+              )}
+            </ListItemIcon>
+            <ListItemText>Resend on WhatsApp</ListItemText>
+          </MenuItem>
+        )}
       </Menu>
     </>
   );
@@ -289,6 +314,60 @@ export function SalesHistoryGrid({
   const { outletId: sessionOutletId } = useOutlet();
   const [editRow, setEditRow] = useState<SalesGridRow | null>(null);
   const [collectingId, setCollectingId] = useState<string | null>(null);
+  const [resendingWhatsAppId, setResendingWhatsAppId] = useState<string | null>(null);
+
+  const resendWhatsAppBill = useCallback(
+    async (row: SalesGridRow) => {
+      if (!row.documentId) {
+        notification.open?.({
+          type: "error",
+          message: "Cannot send",
+          description: "Missing sale document id from server.",
+        });
+        return;
+      }
+      const phone = normalizePhoneGroupKey(row.customer?.phone ?? "");
+      if (phone.length < 10) {
+        notification.open?.({
+          type: "error",
+          message: "No phone number",
+          description: "This sale has no customer phone on file.",
+        });
+        return;
+      }
+      setResendingWhatsAppId(row.id);
+      try {
+        const res = await resendSaleBillWhatsApp(row.documentId);
+        const body = await res.json().catch(() => null);
+        if (!res.ok) {
+          const msg =
+            (body && typeof body === "object" && "message" in body
+              ? String((body as { message: unknown }).message)
+              : null) || `HTTP ${res.status}`;
+          notification.open?.({
+            type: "error",
+            message: "WhatsApp not sent",
+            description: msg,
+          });
+          return;
+        }
+        notification.open?.({
+          type: "success",
+          message: "Bill sent on WhatsApp",
+          description: `Link sent to ${row.customer?.phone ?? "customer"}.`,
+        });
+      } catch {
+        notification.open?.({
+          type: "error",
+          message: "Network error",
+          description: "Could not reach the server.",
+        });
+      } finally {
+        setResendingWhatsAppId(null);
+      }
+    },
+    [notification],
+  );
 
   const collectDuePayment = useCallback(
     async (row: SalesGridRow, mode: CollectPaymentMode) => {
@@ -563,12 +642,14 @@ export function SalesHistoryGrid({
         <RowActions
           row={params.row}
           onEdit={(r) => setEditRow(r)}
+          onResendWhatsApp={(r) => void resendWhatsAppBill(r)}
+          resending={resendingWhatsAppId === params.row.id}
         />
       ),
     });
 
     return base;
-  }, [dueCollectionMode, collectingId, collectDuePayment, dueRowGrouping]);
+  }, [dueCollectionMode, collectingId, collectDuePayment, dueRowGrouping, resendWhatsAppBill, resendingWhatsAppId]);
 
   const header = (
     <Stack

@@ -45,6 +45,14 @@ export function extractCreatedSaleId(body: unknown): string {
   return pick(o.saleId) || pick(o.SaleId) || pick(o.id) || pick(o.Id);
 }
 
+/** True when the server queued a WhatsApp bill link for the customer phone. */
+export function extractWhatsappBillQueued(body: unknown): boolean {
+  const o = asRecord(body);
+  if (!o) return false;
+  if (o.whatsappBillQueued === true || o.WhatsappBillQueued === true) return true;
+  return false;
+}
+
 /** Short human hint when create was rejected or non-OK. */
 export function extractSalesCreateFailureHint(res: Response, body: unknown): string {
   if (!res.ok) return `HTTP ${res.status}`;

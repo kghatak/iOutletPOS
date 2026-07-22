@@ -40,6 +40,7 @@ import {
 import {
   extractCreatedSaleId,
   extractSalesCreateFailureHint,
+  extractWhatsappBillQueued,
   getSalesCreatePostUrl,
   isSalesCreateResponseSuccess,
 } from "../utils/salesCreate";
@@ -400,6 +401,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
     trimmedCustomerName.length > 0 && trimmedCustomerPhone.length >= 10;
 
   const [lastOrder, setLastOrder] = useState<InvoiceData | null>(null);
+  const [lastWhatsappSent, setLastWhatsappSent] = useState(false);
   const lastOrderRef = useRef(lastOrder);
   lastOrderRef.current = lastOrder;
 
@@ -410,6 +412,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
 
   const handleNewOrder = useCallback(() => {
     setLastOrder(null);
+    setLastWhatsappSent(false);
     setPaymentMode("Cash");
     setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
   }, []);
@@ -472,6 +475,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       total: finalTotal,
       paymentMode,
       ...(paymentMode === "Split" ? { payments: splitPayments } : {}),
+      cashierName: getSessionCashierName(),
     };
 
     const { date: receiptDate, billTime } = invoiceReceiptStamp();
@@ -513,6 +517,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       }
 
       const saleId = extractCreatedSaleId(body);
+      const whatsappQueued = extractWhatsappBillQueued(body);
       invoiceData.invoiceNo = saleId || invoiceData.invoiceNo;
 
       await queryClient.invalidateQueries({
@@ -522,9 +527,11 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
       if (mode === "print") {
         void printThermalInvoice(invoiceData).catch(console.error);
         setLastOrder(invoiceData);
+        setLastWhatsappSent(whatsappQueued);
       } else {
         // "Save & New Order": no receipt, no success screen — go straight to a fresh cart.
         setLastOrder(null);
+        setLastWhatsappSent(false);
         setPaymentMode("Cash");
       }
 
@@ -574,6 +581,11 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
               {formatPaymentDisplayLabel(lastOrder.paymentMode, lastOrder.payments)}
             </Typography>
           </Box>
+        )}
+        {lastWhatsappSent && (
+          <Typography variant="caption" color="success.main" display="block" sx={{ fontSize: "0.68rem", mt: 0.5 }}>
+            Bill link sent on WhatsApp
+          </Typography>
         )}
 
         <Button
@@ -700,7 +712,9 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                   helperText={
                     paymentMode === "Due" && trimmedCustomerPhone.length < 10
                       ? "Enter 10-digit phone"
-                      : undefined
+                      : trimmedCustomerPhone.length >= 10
+                        ? "Bill will be sent on WhatsApp"
+                        : undefined
                   }
                   sx={compactInputSx}
                   slotProps={{
