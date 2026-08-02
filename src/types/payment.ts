@@ -50,6 +50,29 @@ export function isSplitPaymentMode(mode: string | undefined): boolean {
   return (mode ?? "").trim().toLowerCase() === "split";
 }
 
+export function splitPaymentsToAmounts(
+  payments: SalePaymentSplit[] | undefined,
+): SplitPaymentAmounts {
+  const amounts: SplitPaymentAmounts = { ...EMPTY_SPLIT_AMOUNTS };
+  if (!payments) return amounts;
+  for (const p of payments) {
+    if (p.mode in amounts && p.amount > 0) {
+      amounts[p.mode] = String(p.amount);
+    }
+  }
+  return amounts;
+}
+
+export function parsePosPaymentMode(raw: string | undefined): PosPaymentMode {
+  const s = (raw ?? "").trim().toLowerCase();
+  if (s === "cash") return "Cash";
+  if (s === "card") return "Card";
+  if (s === "upi") return "UPI";
+  if (s === "due") return "Due";
+  if (s === "split") return "Split";
+  return "Cash";
+}
+
 export function parseSalePayments(raw: unknown): SalePaymentSplit[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out: SalePaymentSplit[] = [];

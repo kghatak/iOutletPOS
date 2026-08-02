@@ -23,7 +23,17 @@ import {
   previewSaleTotals,
 } from "../api/saleUpdate";
 import { useOutlet } from "../context/outlet-context";
+import { SplitPaymentPanel } from "./SplitPaymentPanel";
 import type { Product } from "../types/product";
+import {
+  buildPaymentsFromSplitAmounts,
+  EMPTY_SPLIT_AMOUNTS,
+  isSplitPaymentBalanced,
+  parsePosPaymentMode,
+  splitPaymentsToAmounts,
+  type PosPaymentMode,
+  type SplitPaymentAmounts,
+} from "../types/payment";
 import type { SaleOrderDiscount, SaleLineItem, SalesGridRow } from "../types/sale";
 
 type LocalLine = SaleLineItem & { key: string };
@@ -105,17 +115,6 @@ function initDiscountFromRow(d: SaleOrderDiscount | undefined): {
   return { type: "₹", input: o.amount != null ? String(o.amount) : "" };
 }
 
-type SalePaymentMode = "Cash" | "Card" | "UPI" | "Due";
-
-function initPaymentMode(raw: string | undefined): SalePaymentMode {
-  const s = (raw ?? "").trim().toLowerCase();
-  if (s === "cash") return "Cash";
-  if (s === "card") return "Card";
-  if (s === "upi") return "UPI";
-  if (s === "due") return "Due";
-  return "Cash";
-}
-
 type EditSaleDialogProps = {
   open: boolean;
   row: SalesGridRow | null;
@@ -138,7 +137,8 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
   const [discountInput, setDiscountInput] = useState("");
   const [addQty, setAddQty] = useState("1");
   const [addProduct, setAddProduct] = useState<Product | null>(null);
-  const [paymentMode, setPaymentMode] = useState<SalePaymentMode>("Cash");
+  const [paymentMode, setPaymentMode] = useState<PosPaymentMode>("Cash");
+  const [splitAmounts, setSplitAmounts] = useState<SplitPaymentAmounts>(EMPTY_SPLIT_AMOUNTS);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -166,7 +166,8 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
     const disc = initDiscountFromRow(row.discount);
     setDiscountType(disc.type);
     setDiscountInput(disc.input);
-    setPaymentMode(initPaymentMode(row.paymentMode));
+    setPaymentMode(parsePosPaymentMode(row.paymentMode));
+    setSplitAmounts(splitPaymentsToAmounts(row.payments));
     setCustomerName(row.customer?.name ?? "");
     setCustomerPhone(row.customer?.phone ?? "");
     setCustomerAddress(row.customer?.address ?? "");
@@ -223,6 +224,14 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
     return previewSaleTotals(lines, orderDiscount);
   }, [lines, row, orderDiscount]);
 
+  const splitPayments = useMemo(
+    () => buildPaymentsFromSplitAmounts(splitAmounts),
+    [splitAmounts],
+  );
+  const splitPaymentReady =
+    paymentMode === "Split" &&
+    isSplitPaymentBalanced(splitPayments, totalsPreview.total);
+
   const trimmedCustomerName = customerName.trim();
   const trimmedCustomerPhoneDigits = customerPhone.replace(/\D/g, "");
   const dueCustomerComplete =
@@ -240,6 +249,7 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
     );
     if (!linesOk) return false;
     if (paymentMode === "Due") return dueCustomerComplete;
+    if (paymentMode === "Split") return splitPaymentReady;
     return true;
   }, [
     row?.documentId,
@@ -247,6 +257,7 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
     lines,
     paymentMode,
     dueCustomerComplete,
+    splitPaymentReady,
   ]);
 
   const handleQtyChange = (key: string, raw: string) => {
@@ -331,6 +342,15 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
         });
         return;
       }
+      if (paymentMode === "Split" && !splitPaymentReady) {
+        notification.open?.({
+          type: "error",
+          message: "Split payment incomplete",
+          description:
+            "Enter amounts for at least two modes that total the bill amount.",
+        });
+        return;
+      }
       notification.open?.({
         type: "error",
         message: "Cannot save",
@@ -353,6 +373,7 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
       orderDiscount,
       paymentMode,
       row.plainSaleId,
+      paymentMode === "Split" ? splitPayments : undefined,
     );
 
     setSaving(true);
@@ -602,9 +623,11 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
             select
             label="Payment mode"
             value={paymentMode}
-            onChange={(e) =>
-              setPaymentMode(e.target.value as SalePaymentMode)
-            }
+            onChange={(e) => {
+              const next = e.target.value as PosPaymentMode;
+              setPaymentMode(next);
+              if (next !== "Split") setSplitAmounts(EMPTY_SPLIT_AMOUNTS);
+            }}
             fullWidth
             size="small"
             InputLabelProps={{ shrink: true }}
@@ -613,7 +636,18 @@ export function EditSaleDialog({ open, row, onClose }: EditSaleDialogProps) {
             <MenuItem value="Card">Card</MenuItem>
             <MenuItem value="UPI">UPI</MenuItem>
             <MenuItem value="Due">Due (credit)</MenuItem>
+            <MenuItem value="Split">Split</MenuItem>
           </TextField>
+
+          {paymentMode === "Split" && (
+            <SplitPaymentPanel
+              finalTotal={totalsPreview.total}
+              amounts={splitAmounts}
+              onChange={(mode, value) =>
+                setSplitAmounts((prev) => ({ ...prev, [mode]: value }))
+              }
+            />
+          )}
 
           <Typography variant="subtitle2" sx={{ pt: 1 }}>
             Add item
