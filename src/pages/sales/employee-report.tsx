@@ -23,8 +23,10 @@ import {
   getSaleBillerName,
   getSaleOrderDiscount,
   getSalePaymentMode,
+  getSalePayments,
   getSaleRecordLocalDateKey,
 } from "../../types/sale";
+import { isSplitPaymentMode, type SalePaymentSplit } from "../../types/payment";
 
 const SALES_LIST_CAP = 2000;
 const MAX_RANGE_DAYS = 7;
@@ -139,6 +141,21 @@ function paymentBucket(mode: string | undefined): PaymentBucket {
   return "other";
 }
 
+function addSaleAmountToPaymentBuckets(
+  payments: Record<PaymentBucket, number>,
+  mode: string | undefined,
+  totalAmount: number,
+  splitPayments: SalePaymentSplit[] | undefined,
+): void {
+  if (isSplitPaymentMode(mode) && splitPayments?.length) {
+    for (const p of splitPayments) {
+      payments[paymentBucket(p.mode)] += p.amount;
+    }
+    return;
+  }
+  payments[paymentBucket(mode)] += totalAmount;
+}
+
 function saleOrderDiscountAmount(record: SaleRecord): number {
   const d = getSaleOrderDiscount(record);
   if (d == null) return 0;
@@ -184,6 +201,7 @@ function aggregateByBiller(records: SaleRecord[]): BillerBlock[] {
     const name = getSaleBillerName(r);
     const amt = getSaleAmountNumber(r);
     const mode = getSalePaymentMode(r);
+    const splitPayments = getSalePayments(r);
     let block = map.get(name);
     if (!block) {
       block = {
@@ -210,7 +228,7 @@ function aggregateByBiller(records: SaleRecord[]): BillerBlock[] {
     if (saleOrderDiscountAmount(r) > 0) block.ordersDiscounted += 1;
     if (hasTruthyFlag(r, "modified", "Modified", "isModified")) block.ordersModified += 1;
     if (hasTruthyFlag(r, "reprinted", "Reprinted", "isReprint", "wasReprinted")) block.ordersReprinted += 1;
-    block.payments[paymentBucket(mode)] += amt;
+    addSaleAmountToPaymentBuckets(block.payments, mode, amt, splitPayments);
   }
 
   return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));

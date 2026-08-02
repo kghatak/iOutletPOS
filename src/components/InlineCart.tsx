@@ -48,79 +48,16 @@ import {
   EMPTY_SPLIT_AMOUNTS,
   formatPaymentDisplayLabel,
   isSplitPaymentBalanced,
-  SPLIT_PAYMENT_CHANNELS,
-  splitPaymentsTotal,
   type PosPaymentMode,
   type SplitPaymentAmounts,
 } from "../types/payment";
+import { SplitPaymentPanel } from "./SplitPaymentPanel";
 
 const compactInputSx = {
   "& .MuiInputBase-root": { fontSize: "0.72rem" },
   "& .MuiInputBase-input": { py: 0.65 },
   "& .MuiInputLabel-root": { fontSize: "0.72rem" },
 } as const;
-
-function SplitPaymentPanel({
-  finalTotal,
-  amounts,
-  onChange,
-}: {
-  finalTotal: number;
-  amounts: SplitPaymentAmounts;
-  onChange: (mode: keyof SplitPaymentAmounts, value: string) => void;
-}) {
-  const payments = buildPaymentsFromSplitAmounts(amounts);
-  const paid = splitPaymentsTotal(payments);
-  const remaining = Math.round((finalTotal - paid) * 100) / 100;
-  const balanced = isSplitPaymentBalanced(payments, finalTotal);
-
-  return (
-    <Paper variant="outlined" sx={{ p: 1.15, mb: 1.15, bgcolor: "grey.50" }}>
-      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.85, fontSize: "0.68rem" }}>
-        Enter amounts per mode (must total ₹{finalTotal.toFixed(2)})
-      </Typography>
-      <Stack spacing={0.85}>
-        {SPLIT_PAYMENT_CHANNELS.map((mode) => (
-          <TextField
-            key={mode}
-            label={`${mode} (₹)`}
-            type="number"
-            value={amounts[mode]}
-            onChange={(e) => onChange(mode, e.target.value)}
-            fullWidth
-            size="small"
-            sx={compactInputSx}
-            slotProps={{ htmlInput: { min: 0, step: "any" } }}
-          />
-        ))}
-      </Stack>
-      <Stack spacing={0.35} sx={{ mt: 0.85 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
-          <Typography variant="caption" sx={{ fontSize: "0.68rem" }}>Paid</Typography>
-          <Typography variant="caption" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
-            ₹{paid.toFixed(2)}
-          </Typography>
-        </Stack>
-        {!balanced && paid > 0 && (
-          <Typography
-            variant="caption"
-            color={remaining > 0 ? "error" : "warning.main"}
-            sx={{ fontSize: "0.68rem" }}
-          >
-            {remaining > 0
-              ? `₹${remaining.toFixed(2)} more needed`
-              : `₹${Math.abs(remaining).toFixed(2)} over total`}
-          </Typography>
-        )}
-        {balanced && (
-          <Typography variant="caption" color="success.main" fontWeight={600} sx={{ fontSize: "0.68rem" }}>
-            Split payment matches total ✓
-          </Typography>
-        )}
-      </Stack>
-    </Paper>
-  );
-}
 
 function CartLineRow({
   line,
@@ -827,6 +764,7 @@ export function InlineCart({ onOrderPlaced, onNewOrder }: { onOrderPlaced?: () =
                 onChange={(mode, value) =>
                   setSplitAmounts((prev) => ({ ...prev, [mode]: value }))
                 }
+                fieldSx={compactInputSx}
               />
             )}
 

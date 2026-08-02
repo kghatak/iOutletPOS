@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "../config";
 import { getApiHeaders } from "../providers/authProvider";
+import type { SalePaymentSplit } from "../types/payment";
 import type { SaleLineItem, SaleOrderDiscount } from "../types/sale";
 import { normalizeCartQuantity } from "../types/cart";
 
@@ -53,6 +54,7 @@ export type UpdateSaleRequestBody = {
   discount?: SaleOrderDiscount;
   total: number;
   paymentMode?: string;
+  payments?: SalePaymentSplit[];
   /** Send if the server expects business id in body rather than URL. */
   saleId?: string;
 };
@@ -121,6 +123,7 @@ export function buildSaleUpdatePayload(
   existingDiscount: SaleOrderDiscount | undefined,
   paymentMode: string | undefined,
   saleIdForBody?: string,
+  payments?: SalePaymentSplit[],
 ): UpdateSaleRequestBody {
   const items = lines
     .filter((l) => l.quantity > 0)
@@ -154,6 +157,9 @@ export function buildSaleUpdatePayload(
     discount,
     total,
     paymentMode: paymentMode?.trim() || undefined,
+    ...(paymentMode?.trim() === "Split" && payments?.length
+      ? { payments }
+      : {}),
     ...(saleIdForBody ? { saleId: saleIdForBody } : {}),
   };
 }
