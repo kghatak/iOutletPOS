@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import Inventory2OutlinedIcon from "@mui/icons-material/Inventory2Outlined";
+import SearchIcon from "@mui/icons-material/Search";
 import Button from "@mui/material/Button";
+import InputAdornment from "@mui/material/InputAdornment";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import type { GridPaginationModel } from "@mui/x-data-grid";
@@ -14,14 +17,30 @@ import { SalesHistoryGrid } from "../../components/SalesHistoryGrid";
 
 export const SalesPage = () => {
   const [salesView, setSalesView] = useState<"all" | "due">("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
     page: 0,
     pageSize: 10,
   });
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
     setPaginationModel((m) => ({ ...m, page: 0 }));
-  }, [salesView]);
+  }, [salesView, search]);
+
+  const salesListMeta = useMemo(() => {
+    const meta: Record<string, unknown> = {};
+    if (salesView === "due") meta.salesDueOnly = true;
+    if (search) meta.salesSearch = search;
+    return Object.keys(meta).length > 0 ? meta : undefined;
+  }, [salesView, search]);
 
   const salesListQuery = useList<SaleRecord>({
     resource: "sales",
@@ -30,9 +49,7 @@ export const SalesPage = () => {
       currentPage: paginationModel.page + 1,
       pageSize: paginationModel.pageSize,
     },
-    ...(salesView === "due"
-      ? { meta: { salesDueOnly: true } as Record<string, unknown> }
-      : {}),
+    ...(salesListMeta ? { meta: salesListMeta } : {}),
     errorNotification: false,
     queryOptions: {
       staleTime: 30 * 1000,
@@ -58,7 +75,13 @@ export const SalesPage = () => {
 
   return (
     <>
-      <Stack direction="row" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        alignItems={{ xs: "stretch", sm: "center" }}
+        flexWrap="wrap"
+        gap={1.5}
+        sx={{ mb: 2 }}
+      >
         <ToggleButtonGroup
           value={salesView}
           exclusive
@@ -70,6 +93,22 @@ export const SalesPage = () => {
           <ToggleButton value="all">All sales</ToggleButton>
           <ToggleButton value="due">Outstanding due</ToggleButton>
         </ToggleButtonGroup>
+        <TextField
+          size="small"
+          placeholder="Search by sale ID, name, or phone"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          sx={{ minWidth: { xs: "100%", sm: 280 }, maxWidth: { sm: 360 } }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
       </Stack>
 
       <SalesHistoryGrid
