@@ -81,6 +81,7 @@ function downloadSalesCsv(rows: SalesGridRow[]) {
     "salesId",
     "Products",
     "Items Count",
+    "Name",
     "Discount",
     "Amount",
     "CreatedAt",
@@ -91,6 +92,7 @@ function downloadSalesCsv(rows: SalesGridRow[]) {
         escapeCsvField(r.salesId),
         escapeCsvField(r.products),
         String(r.itemsCount),
+        escapeCsvField((r.customer?.name ?? "").trim() || "—"),
         String(getSaleDiscountAmountRupees(r.discount)),
         String(r.amount),
         escapeCsvField(r.createdAt),
@@ -414,34 +416,35 @@ export function SalesHistoryGrid({
         align: "center",
         headerAlign: "center",
       },
+      {
+        field: "customerName",
+        headerName: "Name",
+        flex: 1,
+        minWidth: 120,
+        sortable: false,
+        valueGetter: (_, row) => (row.customer?.name ?? "").trim(),
+        renderCell: (params: { row: SalesGridRow }) => {
+          const name = (params.row.customer?.name ?? "").trim();
+          const grp = dueCollectionMode ? dueRowGrouping?.get(params.row.id) : undefined;
+          const subtitle =
+            grp && grp.total > 1 ? `Due ${grp.index} / ${grp.total}` : "";
+          const title = [name || "—", subtitle].filter(Boolean).join(" — ");
+          return (
+            <Stack spacing={0} sx={{ minWidth: 0, py: 0.25 }}>
+              <Typography variant="body2" noWrap title={title}>
+                {name || "—"}
+              </Typography>
+              {subtitle ? (
+                <Typography variant="caption" color="text.secondary" noWrap title={subtitle}>
+                  {subtitle}
+                </Typography>
+              ) : null}
+            </Stack>
+          );
+        },
+      },
       ...(dueCollectionMode
         ? ([
-            {
-              field: "customerName",
-              headerName: "Name",
-              flex: 1,
-              minWidth: 120,
-              sortable: false,
-              renderCell: (params: { row: SalesGridRow }) => {
-                const name = (params.row.customer?.name ?? "").trim();
-                const grp = dueRowGrouping?.get(params.row.id);
-                const subtitle =
-                  grp && grp.total > 1 ? `Due ${grp.index} / ${grp.total}` : "";
-                const title = [name || "—", subtitle].filter(Boolean).join(" — ");
-                return (
-                  <Stack spacing={0} sx={{ minWidth: 0, py: 0.25 }}>
-                    <Typography variant="body2" noWrap title={title}>
-                      {name || "—"}
-                    </Typography>
-                    {subtitle ? (
-                      <Typography variant="caption" color="text.secondary" noWrap title={subtitle}>
-                        {subtitle}
-                      </Typography>
-                    ) : null}
-                  </Stack>
-                );
-              },
-            },
             {
               field: "collectDue",
               headerName: "Payment",

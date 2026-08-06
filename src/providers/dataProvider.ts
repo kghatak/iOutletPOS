@@ -130,7 +130,9 @@ export const dataProvider: DataProvider = {
     if (resource === "sales") {
       const qs = new URLSearchParams();
       const p = params.pagination;
-      const meta = params.meta as { salesDueOnly?: boolean } | undefined;
+      const meta = params.meta as
+        | { salesDueOnly?: boolean; salesSearch?: string }
+        | undefined;
 
       if (!p || p.mode === "off") {
         qs.set("skip", "0");
@@ -143,6 +145,8 @@ export const dataProvider: DataProvider = {
         qs.set("limit", String(limit));
       }
       if (meta?.salesDueOnly) qs.set("paymentMode", "Due");
+      const searchTrim = meta?.salesSearch?.trim();
+      if (searchTrim) qs.set("search", searchTrim);
 
       const url =
         qs.size > 0
