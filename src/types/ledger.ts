@@ -28,6 +28,7 @@ export interface RawOrder {
   orderDate?: string;
   OrderDate?: string;
   deliveredDate?: unknown;
+  acceptedDate?: unknown;
   customerName?: string;
   customer?: { name?: string };
   outlet?: { id?: string; name?: string };
@@ -158,11 +159,11 @@ export function getOrderAmount(o: RawOrder): number {
 }
 
 export function getOrderDate(o: RawOrder): Date {
-  return tsToDate(o.deliveredDate) ?? tsToDate(o.orderDate ?? o.OrderDate) ?? tsToDate(o["Created at"]) ?? tsToDate(o.createdAt ?? o.CreatedAt ?? o.date) ?? new Date();
+  return tsToDate(o.acceptedDate) ?? tsToDate(o.deliveredDate) ?? tsToDate(o.orderDate ?? o.OrderDate) ?? tsToDate(o["Created at"]) ?? tsToDate(o.createdAt ?? o.CreatedAt ?? o.date) ?? new Date();
 }
 
 export function getOrderSortDate(o: RawOrder): Date {
-  return tsToDate(o.deliveredDate) ?? tsToDate(o["Created at"]) ?? tsToDate(o.createdAt ?? o.CreatedAt) ?? new Date();
+  return tsToDate(o.acceptedDate) ?? tsToDate(o.deliveredDate) ?? tsToDate(o["Created at"]) ?? tsToDate(o.createdAt ?? o.CreatedAt) ?? new Date();
 }
 
 export function getOrderId(o: RawOrder): string {
