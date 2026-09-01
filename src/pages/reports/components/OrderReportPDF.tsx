@@ -22,7 +22,7 @@ function getOutletName(outlet: unknown): string {
 }
 
 function getOrderDate(record: AnyRecord): string {
-  const raw = record["Created at"] ?? record.createdAt;
+  const raw = record.acceptedDate ?? record.deliveredDate ?? record["Created at"] ?? record.createdAt;
   if (!raw) return "N/A";
   if (typeof raw === "object" && raw !== null) {
     const o = raw as Record<string, unknown>;

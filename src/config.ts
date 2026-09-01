@@ -1,15 +1,17 @@
 /**
  * Single backend origin for the app (local or production).
- * Set in `.env`:
+ * Override anytime with `.env`:
+ *   VITE_API_URL=http://localhost:5020
  *
- *   Local:  VITE_API_URL=http://localhost:5020
- *   Prod:   VITE_API_URL=https://your-api.example.com
- *
- * Used for: `/products`, `POST /outlet-portal/auth/login`, `/sales`, `/expenses`, etc.
+ * Default: localhost when running `npm run dev`, Azure URL on production build.
  */
+const PROD_API_URL =
+  "https://orderapp-hbhtdqbkaxeqebcj.eastasia-01.azurewebsites.net";
+const LOCAL_API_URL = "http://localhost:5020";
+
 export const API_BASE_URL =
-  //import.meta.env.VITE_API_URL ?? "http://localhost:5020";
-  import.meta.env.VITE_API_URL ?? "https://orderapp-hbhtdqbkaxeqebcj.eastasia-01.azurewebsites.net";
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.PROD ? PROD_API_URL : LOCAL_API_URL);
 
 export const AUTH_STORAGE_KEY = "ioutlet:session";
 
