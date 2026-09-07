@@ -1,6 +1,6 @@
 import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import { getHSNCode, formatCurrencyWithCommas, formatDateForLedger } from "../utils/pdfHelpers";
+import { getHSNCode, formatCurrencyWithCommas, formatDateForLedger, resolveCustomerGstin, type OutletGstinRecord } from "../utils/pdfHelpers";
 import numberToWordsIndian from "../../../utils/numberToWordsIndian";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10,6 +10,7 @@ type ReturnItem = AnyRecord;
 interface ReturnsReportPDFProps {
   reportData: AnyRecord[];
   outletName?: string;
+  outlets?: OutletGstinRecord[];
 }
 
 function getOutletName(outlet: unknown, fallback?: string): string {
@@ -146,7 +147,7 @@ const COL = {
   amount: "12%",
 };
 
-export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, outletName }) => {
+export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, outletName, outlets = [] }) => {
   if (!reportData || reportData.length === 0) {
     return (
       <Document>
@@ -165,6 +166,7 @@ export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, 
         const returnDate = formatDateForLedger(rec.collectedDate ?? rec.createdAt ?? new Date());
         const returnId = String(rec.returnId ?? rec.id ?? `RET-${returnIndex + 1}`);
         const outlet = getOutletName(rec.outlet, outletName);
+        const customerGstin = resolveCustomerGstin(rec, outlets);
         const displayTotal = typeof rec.totalAmount === "number" && rec.totalAmount > 0
           ? rec.totalAmount
           : totals.totalAmount;
@@ -213,6 +215,7 @@ export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, 
                 <View style={s.detailCol}>
                   <View style={s.detailItem}>
                     <Text style={s.detailLabel}>GSTIN / UIN :</Text>
+                    <Text>{customerGstin}</Text>
                   </View>
                 </View>
               </View>

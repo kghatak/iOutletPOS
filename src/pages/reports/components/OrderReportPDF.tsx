@@ -1,6 +1,6 @@
 import React from "react";
 import { Document, Page, Text, View } from "@react-pdf/renderer";
-import { getHSNCode } from "../utils/pdfHelpers";
+import { getHSNCode, resolveCustomerGstin, type OutletGstinRecord } from "../utils/pdfHelpers";
 import numberToWordsIndian from "../../../utils/numberToWordsIndian";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -9,6 +9,7 @@ type AnyRecord = Record<string, any>;
 interface OrderReportPDFProps {
   // Accept any array so RawOrder[] (from ledger types) can be passed without conflict
   reportData: AnyRecord[];
+  outlets?: OutletGstinRecord[];
 }
 
 function getOutletName(outlet: unknown): string {
@@ -42,13 +43,14 @@ function getTotalAmount(record: AnyRecord): number {
   return typeof v === "number" && isFinite(v) ? v : 0;
 }
 
-export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData }) => {
+export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outlets = [] }) => {
   return (
     <Document>
       {reportData.map((order, index) => {
         const orderId = String(order["parent orderId"] ?? order.id ?? `ORD-${index + 1}`);
         const orderDate = getOrderDate(order);
         const outletName = getOutletName(order.outlet);
+        const customerGstin = resolveCustomerGstin(order, outlets);
         const totalAmt = getTotalAmount(order);
         const transport = String(order.transport ?? "To Pay");
         const items: AnyRecord[] = Array.isArray(order.items) ? order.items : [];
@@ -144,10 +146,10 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData }) =>
 
               <View style={{ flexDirection: "row" }}>
                 <View style={{ flex: 1, padding: 4, borderRight: "1px solid #000" }}>
-                  <Text>GSTIN / UIN :</Text>
+                  <Text>GSTIN / UIN : {customerGstin}</Text>
                 </View>
                 <View style={{ flex: 1, padding: 4 }}>
-                  <Text>GSTIN / UIN :</Text>
+                  <Text>GSTIN / UIN : {customerGstin}</Text>
                 </View>
               </View>
             </View>
