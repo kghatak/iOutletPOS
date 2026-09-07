@@ -44,6 +44,8 @@ function readSession(): Session | null {
  * (written at login; includes `tenantId` from `data.tenantId`).
  */
 /** Returns the `name` stored in the session — shown in the app header, used as cashier on invoices. */
+export const OUTLET_STOREKEEPER_PROFILE = "OutletStorekeeper";
+
 export function getSessionUserProfile(): string | undefined {
   try {
     const session = readSession();
@@ -52,6 +54,10 @@ export function getSessionUserProfile(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function isOutletStorekeeper(): boolean {
+  return getSessionUserProfile() === OUTLET_STOREKEEPER_PROFILE;
 }
 
 export function getSessionCashierName(): string | undefined {

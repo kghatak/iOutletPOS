@@ -22,8 +22,14 @@ import { ReturnsReportPDF } from "./components/ReturnsReportPDF";
 import { LedgerReportPDF } from "./components/LedgerReportPDF";
 
 import { API_BASE_URL, AUTH_STORAGE_KEY } from "../../config";
-import { getApiHeaders } from "../../providers/authProvider";
+import { getApiHeaders, getSessionOutletPrintInfo, isOutletStorekeeper } from "../../providers/authProvider";
 import { useOutlet } from "../../context/outlet-context";
+import {
+  findMatchingOutlet,
+  parseOutletRecord,
+  resolveCustomerGstin,
+  type OutletGstinRecord,
+} from "./utils/pdfHelpers";
 import type {
   LedgerEntry,
   RawOrder,
@@ -61,17 +67,63 @@ import {
   parseYmd,
 } from "../../types/ledger";
 
+type AnyRecord = Record<string, unknown>;
+
 // ── Session helper ─────────────────────────────────────────────────
 
 function getOutletName(): string {
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return "";
-    const s = JSON.parse(raw) as { name?: string };
+    const s = JSON.parse(raw) as { name?: string; gstNo?: string };
     return s.name ?? "";
   } catch {
     return "";
   }
+}
+
+function getSessionOutletRecord(outletId: string): OutletGstinRecord {
+  const sessionGst = getSessionOutletPrintInfo().gstNo;
+  return {
+    id: outletId,
+    name: getOutletName() || undefined,
+    gstNo: sessionGst,
+  };
+}
+
+async function fetchOutletForGstin(outletId: string): Promise<OutletGstinRecord> {
+  const sessionOutlet = getSessionOutletRecord(outletId);
+  try {
+    const body = await fetchJson(`${API_BASE_URL}/outlets/${encodeURIComponent(outletId)}`);
+    const parsed = parseOutletRecord(body);
+    if (parsed) {
+      return {
+        id: parsed.id ?? outletId,
+        name: parsed.name ?? sessionOutlet.name,
+        gstNo: parsed.gstNo ?? sessionOutlet.gstNo,
+      };
+    }
+  } catch {
+    /* fall back to session */
+  }
+  return sessionOutlet;
+}
+
+function enrichRecordsWithGstin(
+  records: AnyRecord[],
+  outlets: OutletGstinRecord[],
+  fallbackGstin: string,
+): AnyRecord[] {
+  return records.map((record) => {
+    const matchedOutlet = findMatchingOutlet(record, outlets) ?? outlets[0];
+    const gstNo = resolveCustomerGstin(record, outlets) || fallbackGstin;
+    const currentName = matchedOutlet?.name?.trim();
+    return {
+      ...record,
+      ...(gstNo ? { gstNo } : {}),
+      ...(currentName ? { outlet: currentName } : {}),
+    };
+  });
 }
 
 // ── API helpers ────────────────────────────────────────────────────
@@ -137,8 +189,6 @@ async function fetchReturns(start: string, end: string, outletId: string): Promi
 // ── Item enrichment ───────────────────────────────────────────────
 // The report endpoints return summary records without items[].
 // Fetch individual order/return details to populate items for the PDF.
-
-type AnyRecord = Record<string, unknown>;
 
 async function enrichWithItems(
   records: AnyRecord[],
@@ -352,9 +402,10 @@ function defaultEnd(): string {
 export const ReportsPage = () => {
   const { outletId } = useOutlet();
   const notification = useNotification();
+  const hideDiscount = isOutletStorekeeper();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [reportType, setReportType] = useState<ReportType>("ledger");
+  const [reportType, setReportType] = useState<ReportType>(hideDiscount ? "orders" : "ledger");
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
   const [loading, setLoading] = useState(false);
@@ -381,6 +432,10 @@ export const ReportsPage = () => {
       });
       return;
     }
+    if (hideDiscount && reportType === "ledger") {
+      notification.open?.({ type: "error", message: "Ledger report is not available" });
+      return;
+    }
 
     // Open the window synchronously (while user gesture is still active)
     const reportWin = window.open("", "_blank");
@@ -392,17 +447,40 @@ export const ReportsPage = () => {
     setLoading(true);
     try {
       if (reportType === "orders") {
-        const ordersRaw = await fetchOrders(startDate, endDate, outletId);
-        const orders = await enrichWithItems(ordersRaw as AnyRecord[], "orders");
+        const [ordersRaw, outletRecord] = await Promise.all([
+          fetchOrders(startDate, endDate, outletId),
+          fetchOutletForGstin(outletId),
+        ]);
+        const pdfOutlets = [outletRecord];
+        const fallbackGstin = resolveCustomerGstin({ outletId }, pdfOutlets);
+        const orders = enrichRecordsWithGstin(
+          await enrichWithItems(ordersRaw as AnyRecord[], "orders"),
+          pdfOutlets,
+          fallbackGstin,
+        );
         const blob = await pdf(
-          <OrderReportPDF reportData={orders} />,
+          <OrderReportPDF reportData={orders} outlets={pdfOutlets} hideDiscount={hideDiscount} />,
         ).toBlob();
         openInReportWindow(reportWin, blob);
       } else if (reportType === "returns") {
-        const returnsRaw = await fetchReturns(startDate, endDate, outletId);
-        const returns = await enrichWithItems(returnsRaw as AnyRecord[], "returns");
+        const [returnsRaw, outletRecord] = await Promise.all([
+          fetchReturns(startDate, endDate, outletId),
+          fetchOutletForGstin(outletId),
+        ]);
+        const pdfOutlets = [outletRecord];
+        const fallbackGstin = resolveCustomerGstin({ outletId }, pdfOutlets);
+        const returns = enrichRecordsWithGstin(
+          await enrichWithItems(returnsRaw as AnyRecord[], "returns"),
+          pdfOutlets,
+          fallbackGstin,
+        );
         const blob = await pdf(
-          <ReturnsReportPDF reportData={returns} />,
+          <ReturnsReportPDF
+            reportData={returns}
+            outletName={outletRecord.name}
+            outlets={pdfOutlets}
+            hideDiscount={hideDiscount}
+          />,
         ).toBlob();
         openInReportWindow(reportWin, blob);
       } else {
@@ -461,7 +539,7 @@ export const ReportsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [reportType, startDate, endDate, outletId, notification]);
+  }, [reportType, startDate, endDate, outletId, notification, hideDiscount]);
 
   const meta = REPORT_META[reportType];
 
@@ -477,12 +555,13 @@ export const ReportsPage = () => {
           gridTemplateColumns: {
             xs: "1fr",
             sm: "repeat(2, 1fr)",
-            md: "repeat(3, 1fr)",
+            md: hideDiscount ? "repeat(2, 1fr)" : "repeat(3, 1fr)",
           },
           gap: 2,
         }}
       >
-        {/* Ledger Report */}
+        {/* Ledger Report — not shown to outlet storekeepers */}
+        {!hideDiscount && (
         <Card
           variant="outlined"
           sx={{
@@ -512,6 +591,7 @@ export const ReportsPage = () => {
             </Button>
           </CardContent>
         </Card>
+        )}
 
         {/* Orders Report */}
         <Card
