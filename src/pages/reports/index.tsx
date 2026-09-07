@@ -22,7 +22,7 @@ import { ReturnsReportPDF } from "./components/ReturnsReportPDF";
 import { LedgerReportPDF } from "./components/LedgerReportPDF";
 
 import { API_BASE_URL, AUTH_STORAGE_KEY } from "../../config";
-import { getApiHeaders, getSessionOutletPrintInfo } from "../../providers/authProvider";
+import { getApiHeaders, getSessionOutletPrintInfo, isOutletStorekeeper } from "../../providers/authProvider";
 import { useOutlet } from "../../context/outlet-context";
 import {
   findMatchingOutlet,
@@ -402,9 +402,10 @@ function defaultEnd(): string {
 export const ReportsPage = () => {
   const { outletId } = useOutlet();
   const notification = useNotification();
+  const hideDiscount = isOutletStorekeeper();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [reportType, setReportType] = useState<ReportType>("ledger");
+  const [reportType, setReportType] = useState<ReportType>(hideDiscount ? "orders" : "ledger");
   const [startDate, setStartDate] = useState(defaultStart);
   const [endDate, setEndDate] = useState(defaultEnd);
   const [loading, setLoading] = useState(false);
@@ -431,6 +432,10 @@ export const ReportsPage = () => {
       });
       return;
     }
+    if (hideDiscount && reportType === "ledger") {
+      notification.open?.({ type: "error", message: "Ledger report is not available" });
+      return;
+    }
 
     // Open the window synchronously (while user gesture is still active)
     const reportWin = window.open("", "_blank");
@@ -454,7 +459,7 @@ export const ReportsPage = () => {
           fallbackGstin,
         );
         const blob = await pdf(
-          <OrderReportPDF reportData={orders} outlets={pdfOutlets} />,
+          <OrderReportPDF reportData={orders} outlets={pdfOutlets} hideDiscount={hideDiscount} />,
         ).toBlob();
         openInReportWindow(reportWin, blob);
       } else if (reportType === "returns") {
@@ -474,6 +479,7 @@ export const ReportsPage = () => {
             reportData={returns}
             outletName={outletRecord.name}
             outlets={pdfOutlets}
+            hideDiscount={hideDiscount}
           />,
         ).toBlob();
         openInReportWindow(reportWin, blob);
@@ -533,7 +539,7 @@ export const ReportsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [reportType, startDate, endDate, outletId, notification]);
+  }, [reportType, startDate, endDate, outletId, notification, hideDiscount]);
 
   const meta = REPORT_META[reportType];
 
@@ -549,12 +555,13 @@ export const ReportsPage = () => {
           gridTemplateColumns: {
             xs: "1fr",
             sm: "repeat(2, 1fr)",
-            md: "repeat(3, 1fr)",
+            md: hideDiscount ? "repeat(2, 1fr)" : "repeat(3, 1fr)",
           },
           gap: 2,
         }}
       >
-        {/* Ledger Report */}
+        {/* Ledger Report — not shown to outlet storekeepers */}
+        {!hideDiscount && (
         <Card
           variant="outlined"
           sx={{
@@ -584,6 +591,7 @@ export const ReportsPage = () => {
             </Button>
           </CardContent>
         </Card>
+        )}
 
         {/* Orders Report */}
         <Card

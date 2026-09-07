@@ -11,6 +11,8 @@ interface ReturnsReportPDFProps {
   reportData: AnyRecord[];
   outletName?: string;
   outlets?: OutletGstinRecord[];
+  /** Storekeepers see list price only — no discount columns or discounted totals. */
+  hideDiscount?: boolean;
 }
 
 function getOutletName(outlet: unknown, fallback?: string): string {
@@ -48,13 +50,13 @@ interface ItemTotals {
   finalAmount: number;
 }
 
-function calcItemTotals(item: ReturnItem): ItemTotals {
+function calcItemTotals(item: ReturnItem, hideDiscount = false): ItemTotals {
   // Support both "price" (order-admin) and "unitPrice" (iOutletPOS)
   const listPrice = item.price ?? item.unitPrice ?? 0;
   const quantity = item.quantity ?? 0;
-  const discountPercentage = item.discountPercentage ?? 0;
+  const discountPercentage = hideDiscount ? 0 : (item.discountPercentage ?? 0);
   const subtotal = listPrice * quantity;
-  const discountAmount = (subtotal * discountPercentage) / 100;
+  const discountAmount = hideDiscount ? 0 : (subtotal * discountPercentage) / 100;
   const amountAfterDiscount = subtotal - discountAmount;
   const gstRate = getGSTRate(item);
   const taxableAmount = amountAfterDiscount / (1 + gstRate / 100);
@@ -73,7 +75,7 @@ function calcItemTotals(item: ReturnItem): ItemTotals {
   };
 }
 
-function calcReturnTotals(items: ReturnItem[]) {
+function calcReturnTotals(items: ReturnItem[], hideDiscount = false) {
   let totalQuantity = 0;
   let totalTaxableAmount = 0;
   let totalCGST = 0;
@@ -83,7 +85,7 @@ function calcReturnTotals(items: ReturnItem[]) {
   const gstGroups: Record<number, { taxable: number; cgst: number; sgst: number; total: number }> = {};
 
   items.forEach((item) => {
-    const t = calcItemTotals(item);
+    const t = calcItemTotals(item, hideDiscount);
     totalQuantity += t.quantity;
     totalTaxableAmount += t.taxableAmount;
     totalCGST += t.cgstAmount;
@@ -147,7 +149,26 @@ const COL = {
   amount: "12%",
 };
 
-export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, outletName, outlets = [] }) => {
+const COL_NO_DISC = {
+  sn: "4%",
+  desc: "24%",
+  hsn: "9%",
+  qty: "7%",
+  unit: "6%",
+  listPrice: "10%",
+  cgstRate: "6%",
+  cgstAmt: "8%",
+  sgstRate: "6%",
+  sgstAmt: "8%",
+  amount: "12%",
+};
+
+export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({
+  reportData,
+  outletName,
+  outlets = [],
+  hideDiscount = false,
+}) => {
   if (!reportData || reportData.length === 0) {
     return (
       <Document>
@@ -162,15 +183,17 @@ export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, 
     <Document>
       {reportData.map((rec, returnIndex) => {
         const items: ReturnItem[] = Array.isArray(rec.items) ? rec.items : [];
-        const totals = calcReturnTotals(items);
+        const totals = calcReturnTotals(items, hideDiscount);
         const returnDate = formatDateForLedger(rec.collectedDate ?? rec.createdAt ?? new Date());
         const returnId = String(rec.returnId ?? rec.id ?? `RET-${returnIndex + 1}`);
         const outlet = getOutletName(rec.outlet, outletName);
         const customerGstin = resolveCustomerGstin(rec, outlets);
-        const displayTotal = typeof rec.totalAmount === "number" && rec.totalAmount > 0
+        const recordedTotal = typeof rec.totalAmount === "number" && rec.totalAmount > 0
           ? rec.totalAmount
-          : totals.totalAmount;
+          : 0;
+        const displayTotal = hideDiscount ? totals.totalAmount : (recordedTotal || totals.totalAmount);
         const emptyRows = Math.max(0, 20 - items.length);
+        const col = hideDiscount ? COL_NO_DISC : COL;
 
         return (
           <Page key={returnIndex} size="A4" style={s.page}>
@@ -224,45 +247,53 @@ export const ReturnsReportPDF: React.FC<ReturnsReportPDFProps> = ({ reportData, 
             {/* Items table */}
             <View style={s.itemsTable}>
               <View style={s.tableHeader}>
-                <Text style={[s.th, { width: COL.sn }]}>S.N.</Text>
-                <Text style={[s.th, { width: COL.desc, textAlign: "left" }]}>Description of Goods</Text>
-                <Text style={[s.th, { width: COL.hsn }]}>HSN/SAC Code</Text>
-                <Text style={[s.th, { width: COL.qty }]}>Qty.</Text>
-                <Text style={[s.th, { width: COL.unit }]}>Unit</Text>
-                <Text style={[s.th, { width: COL.listPrice }]}>List Price</Text>
-                <Text style={[s.th, { width: COL.discount }]}>Discount</Text>
-                <Text style={[s.th, { width: COL.discPct }]}>Discount (%)</Text>
-                <Text style={[s.th, { width: COL.cgstRate }]}>CGST Rate</Text>
-                <Text style={[s.th, { width: COL.cgstAmt }]}>CGST Amount</Text>
-                <Text style={[s.th, { width: COL.sgstRate }]}>SGST Rate</Text>
-                <Text style={[s.th, { width: COL.sgstAmt }]}>SGST Amount</Text>
-                <Text style={[s.th, { width: COL.amount, borderRight: undefined }]}>Amount(*)</Text>
+                <Text style={[s.th, { width: col.sn }]}>S.N.</Text>
+                <Text style={[s.th, { width: col.desc, textAlign: "left" }]}>Description of Goods</Text>
+                <Text style={[s.th, { width: col.hsn }]}>HSN/SAC Code</Text>
+                <Text style={[s.th, { width: col.qty }]}>Qty.</Text>
+                <Text style={[s.th, { width: col.unit }]}>Unit</Text>
+                <Text style={[s.th, { width: col.listPrice }]}>List Price</Text>
+                {!hideDiscount && (
+                  <>
+                    <Text style={[s.th, { width: COL.discount }]}>Discount</Text>
+                    <Text style={[s.th, { width: COL.discPct }]}>Discount (%)</Text>
+                  </>
+                )}
+                <Text style={[s.th, { width: col.cgstRate }]}>CGST Rate</Text>
+                <Text style={[s.th, { width: col.cgstAmt }]}>CGST Amount</Text>
+                <Text style={[s.th, { width: col.sgstRate }]}>SGST Rate</Text>
+                <Text style={[s.th, { width: col.sgstAmt }]}>SGST Amount</Text>
+                <Text style={[s.th, { width: col.amount, borderRight: undefined }]}>Amount(*)</Text>
               </View>
 
               {items.map((item, idx) => {
-                const t = calcItemTotals(item);
+                const t = calcItemTotals(item, hideDiscount);
                 return (
                   <View key={idx} style={s.tableRow}>
-                    <Text style={[s.td, { width: COL.sn, textAlign: "center" }]}>{idx + 1}</Text>
-                    <Text style={[s.td, { width: COL.desc, textAlign: "left" }]}>{item.name ?? "N/A"}</Text>
-                    <Text style={[s.td, { width: COL.hsn, textAlign: "center" }]}>{getItemHSN(item)}</Text>
-                    <Text style={[s.td, { width: COL.qty, textAlign: "right" }]}>{t.quantity.toFixed(3)}</Text>
-                    <Text style={[s.td, { width: COL.unit, textAlign: "center" }]}>Kgs.</Text>
-                    <Text style={[s.td, { width: COL.listPrice, textAlign: "right" }]}>{t.listPrice.toFixed(2)}</Text>
-                    <Text style={[s.td, { width: COL.discount, textAlign: "right" }]}>{t.discountAmount.toFixed(2)}</Text>
-                    <Text style={[s.td, { width: COL.discPct, textAlign: "right" }]}>{t.discountPercentage.toFixed(2)}%</Text>
-                    <Text style={[s.td, { width: COL.cgstRate, textAlign: "right" }]}>{(t.gstRate / 2).toFixed(2)}%</Text>
-                    <Text style={[s.td, { width: COL.cgstAmt, textAlign: "right" }]}>{t.cgstAmount.toFixed(2)}</Text>
-                    <Text style={[s.td, { width: COL.sgstRate, textAlign: "right" }]}>{(t.gstRate / 2).toFixed(2)}%</Text>
-                    <Text style={[s.td, { width: COL.sgstAmt, textAlign: "right" }]}>{t.sgstAmount.toFixed(2)}</Text>
-                    <Text style={[s.td, { width: COL.amount, borderRight: undefined, textAlign: "right" }]}>{t.finalAmount.toFixed(2)}</Text>
+                    <Text style={[s.td, { width: col.sn, textAlign: "center" }]}>{idx + 1}</Text>
+                    <Text style={[s.td, { width: col.desc, textAlign: "left" }]}>{item.name ?? "N/A"}</Text>
+                    <Text style={[s.td, { width: col.hsn, textAlign: "center" }]}>{getItemHSN(item)}</Text>
+                    <Text style={[s.td, { width: col.qty, textAlign: "right" }]}>{t.quantity.toFixed(3)}</Text>
+                    <Text style={[s.td, { width: col.unit, textAlign: "center" }]}>Kgs.</Text>
+                    <Text style={[s.td, { width: col.listPrice, textAlign: "right" }]}>{t.listPrice.toFixed(2)}</Text>
+                    {!hideDiscount && (
+                      <>
+                        <Text style={[s.td, { width: COL.discount, textAlign: "right" }]}>{t.discountAmount.toFixed(2)}</Text>
+                        <Text style={[s.td, { width: COL.discPct, textAlign: "right" }]}>{t.discountPercentage.toFixed(2)}%</Text>
+                      </>
+                    )}
+                    <Text style={[s.td, { width: col.cgstRate, textAlign: "right" }]}>{(t.gstRate / 2).toFixed(2)}%</Text>
+                    <Text style={[s.td, { width: col.cgstAmt, textAlign: "right" }]}>{t.cgstAmount.toFixed(2)}</Text>
+                    <Text style={[s.td, { width: col.sgstRate, textAlign: "right" }]}>{(t.gstRate / 2).toFixed(2)}%</Text>
+                    <Text style={[s.td, { width: col.sgstAmt, textAlign: "right" }]}>{t.sgstAmount.toFixed(2)}</Text>
+                    <Text style={[s.td, { width: col.amount, borderRight: undefined, textAlign: "right" }]}>{t.finalAmount.toFixed(2)}</Text>
                   </View>
                 );
               })}
 
               {Array.from({ length: emptyRows }).map((_, i) => (
                 <View key={`e${i}`} style={s.tableRow}>
-                  {Object.values(COL).map((w, j, arr) => (
+                  {Object.values(col).map((w, j, arr) => (
                     <Text key={j} style={[s.td, { width: w, borderRight: j === arr.length - 1 ? undefined : "1px solid #000" }]}> </Text>
                   ))}
                 </View>

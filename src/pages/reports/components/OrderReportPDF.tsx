@@ -10,6 +10,8 @@ interface OrderReportPDFProps {
   // Accept any array so RawOrder[] (from ledger types) can be passed without conflict
   reportData: AnyRecord[];
   outlets?: OutletGstinRecord[];
+  /** Storekeepers see list price only — no discount columns or discounted totals. */
+  hideDiscount?: boolean;
 }
 
 function getOutletName(outlet: unknown): string {
@@ -43,7 +45,35 @@ function getTotalAmount(record: AnyRecord): number {
   return typeof v === "number" && isFinite(v) ? v : 0;
 }
 
-export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outlets = [] }) => {
+const ADMIN_COLS = [
+  { label: "S.N.", w: "5%", align: "center" as const },
+  { label: "Description of Goods", w: "30%", align: "left" as const },
+  { label: "HSN/SAC", w: "11%", align: "center" as const },
+  { label: "Qty.", w: "8%", align: "center" as const },
+  { label: "Unit", w: "6%", align: "center" as const },
+  { label: "List Price", w: "9%", align: "center" as const },
+  { label: "Discount", w: "11%", align: "center" as const },
+  { label: "Price", w: "9%", align: "center" as const },
+  { label: "Amount( \u20B9 )", w: "11%", align: "center" as const, last: true },
+];
+
+const STOREKEEPER_COLS = [
+  { label: "S.N.", w: "5%", align: "center" as const },
+  { label: "Description of Goods", w: "40%", align: "left" as const },
+  { label: "HSN/SAC", w: "11%", align: "center" as const },
+  { label: "Qty.", w: "8%", align: "center" as const },
+  { label: "Unit", w: "6%", align: "center" as const },
+  { label: "List Price", w: "12%", align: "center" as const },
+  { label: "Amount( \u20B9 )", w: "18%", align: "center" as const, last: true },
+];
+
+export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({
+  reportData,
+  outlets = [],
+  hideDiscount = false,
+}) => {
+  const columns = hideDiscount ? STOREKEEPER_COLS : ADMIN_COLS;
+
   return (
     <Document>
       {reportData.map((order, index) => {
@@ -51,7 +81,6 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
         const orderDate = getOrderDate(order);
         const outletName = getOutletName(order.outlet);
         const customerGstin = resolveCustomerGstin(order, outlets);
-        const totalAmt = getTotalAmount(order);
         const transport = String(order.transport ?? "To Pay");
         const items: AnyRecord[] = Array.isArray(order.items) ? order.items : [];
 
@@ -60,12 +89,16 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
         const totals = (() => {
           let taxableVal = 0;
           let totalTax = 0;
+          let fullAmount = 0;
           items.forEach((item) => {
             const unitPrice = (item.price ?? item.unitPrice ?? 0) as number;
             const qty = (item.quantity ?? 0) as number;
-            const discPct = (item.discountPercentage ?? 0) as number;
-            const discAmt = (item.discountAmount ?? (unitPrice * qty * discPct / 100)) as number;
+            const discPct = hideDiscount ? 0 : ((item.discountPercentage ?? 0) as number);
+            const discAmt = hideDiscount
+              ? 0
+              : ((item.discountAmount ?? (unitPrice * qty * discPct / 100)) as number);
             const finalAmt = unitPrice * qty - discAmt;
+            fullAmount += finalAmt;
             const gst = (item.gst ?? 0) as number;
             if (gst > 0) {
               const taxable = finalAmt / (1 + gst / 100);
@@ -75,8 +108,11 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
               taxableVal += finalAmt;
             }
           });
-          return { taxableVal, totalTax, cgst: totalTax / 2, sgst: totalTax / 2 };
+          return { taxableVal, totalTax, cgst: totalTax / 2, sgst: totalTax / 2, fullAmount };
         })();
+
+        const recordedTotal = getTotalAmount(order);
+        const totalAmt = hideDiscount ? totals.fullAmount : (recordedTotal || totals.fullAmount);
 
         const MIN_ROWS = 12;
         const emptyRows = Math.max(0, MIN_ROWS - items.length);
@@ -158,17 +194,7 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
             <View style={{ borderLeft: "1px solid #000", borderRight: "1px solid #000", borderBottom: "1px solid #000" }}>
               {/* Table header */}
               <View style={{ flexDirection: "row", borderBottom: "1px solid #000" }}>
-                {[
-                  { label: "S.N.", w: "5%", align: "center" as const },
-                  { label: "Description of Goods", w: "30%", align: "left" as const },
-                  { label: "HSN/SAC", w: "11%", align: "center" as const },
-                  { label: "Qty.", w: "8%", align: "center" as const },
-                  { label: "Unit", w: "6%", align: "center" as const },
-                  { label: "List Price", w: "9%", align: "center" as const },
-                  { label: "Discount", w: "11%", align: "center" as const },
-                  { label: "Price", w: "9%", align: "center" as const },
-                  { label: "Amount( \u20B9 )", w: "11%", align: "center" as const, last: true },
-                ].map(({ label, w, align, last }) => (
+                {columns.map(({ label, w, align, last }) => (
                   <Text
                     key={label}
                     style={{
@@ -190,21 +216,27 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
                 // Support both "price" (order-admin) and "unitPrice" (iOutletPOS)
                 const unitPrice: number = (item.price ?? item.unitPrice ?? 0) as number;
                 const qty: number = (item.quantity ?? 0) as number;
-                const discPct: number = (item.discountPercentage ?? 0) as number;
-                const discAmt: number = (item.discountAmount ?? (unitPrice * qty * discPct / 100)) as number;
+                const discPct: number = hideDiscount ? 0 : ((item.discountPercentage ?? 0) as number);
+                const discAmt: number = hideDiscount
+                  ? 0
+                  : ((item.discountAmount ?? (unitPrice * qty * discPct / 100)) as number);
                 const discountedPrice = discPct > 0 ? unitPrice * (1 - discPct / 100) : unitPrice;
                 const lineAmt = qty * unitPrice - discAmt;
                 return (
                   <View key={idx} style={{ flexDirection: "row", minHeight: 20 }}>
-                    <Text style={{ width: "5%", padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>{idx + 1}.</Text>
-                    <Text style={{ width: "30%", padding: 3, textAlign: "left", borderRight: "1px solid #000", fontSize: 8 }}>{item.name ?? "N/A"}</Text>
-                    <Text style={{ width: "11%", padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>{getHSNCode(item.name ?? "")}</Text>
-                    <Text style={{ width: "8%", padding: 3, textAlign: "right", borderRight: "1px solid #000", fontSize: 8 }}>{qty.toFixed(3)}</Text>
-                    <Text style={{ width: "6%", padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>Kgs.</Text>
-                    <Text style={{ width: "9%", padding: 3, textAlign: "right", borderRight: "1px solid #000", fontSize: 8 }}>{unitPrice.toFixed(2)}</Text>
-                    <Text style={{ width: "11%", padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>{discPct} %</Text>
-                    <Text style={{ width: "9%", padding: 3, textAlign: "right", borderRight: "1px solid #000", fontSize: 8 }}>{discountedPrice.toFixed(2)}</Text>
-                    <Text style={{ width: "11%", padding: 3, textAlign: "right", fontSize: 8 }}>
+                    <Text style={{ width: columns[0].w, padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>{idx + 1}.</Text>
+                    <Text style={{ width: columns[1].w, padding: 3, textAlign: "left", borderRight: "1px solid #000", fontSize: 8 }}>{item.name ?? "N/A"}</Text>
+                    <Text style={{ width: columns[2].w, padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>{getHSNCode(item.name ?? "")}</Text>
+                    <Text style={{ width: columns[3].w, padding: 3, textAlign: "right", borderRight: "1px solid #000", fontSize: 8 }}>{qty.toFixed(3)}</Text>
+                    <Text style={{ width: columns[4].w, padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>Kgs.</Text>
+                    <Text style={{ width: columns[5].w, padding: 3, textAlign: "right", borderRight: "1px solid #000", fontSize: 8 }}>{unitPrice.toFixed(2)}</Text>
+                    {!hideDiscount && (
+                      <>
+                        <Text style={{ width: "11%", padding: 3, textAlign: "center", borderRight: "1px solid #000", fontSize: 8 }}>{discPct} %</Text>
+                        <Text style={{ width: "9%", padding: 3, textAlign: "right", borderRight: "1px solid #000", fontSize: 8 }}>{discountedPrice.toFixed(2)}</Text>
+                      </>
+                    )}
+                    <Text style={{ width: hideDiscount ? columns[6].w : "11%", padding: 3, textAlign: "right", fontSize: 8 }}>
                       {lineAmt.toFixed(2)}
                     </Text>
                   </View>
@@ -214,10 +246,18 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
               {/* Empty padding rows */}
               {Array.from({ length: emptyRows }).map((_, i) => (
                 <View key={`e${i}`} style={{ flexDirection: "row", minHeight: 18 }}>
-                  {["5%", "30%", "11%", "8%", "6%", "9%", "11%", "9%"].map((w, j) => (
-                    <Text key={j} style={{ width: w, padding: 3, borderRight: "1px solid #000" }}> </Text>
+                  {columns.map((col, j) => (
+                    <Text
+                      key={j}
+                      style={{
+                        width: col.w,
+                        padding: 3,
+                        borderRight: j === columns.length - 1 ? undefined : "1px solid #000",
+                      }}
+                    >
+                      {" "}
+                    </Text>
                   ))}
-                  <Text style={{ width: "11%", padding: 3 }}> </Text>
                 </View>
               ))}
 
@@ -238,7 +278,7 @@ export const OrderReportPDF: React.FC<OrderReportPDFProps> = ({ reportData, outl
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 4, borderLeft: "1px solid #000", borderRight: "1px solid #000", borderBottom: "1px solid #000" }}>
               <Text style={{ fontWeight: "bold", fontSize: 10 }}>Grand Total</Text>
               <Text style={{ fontWeight: "bold", fontSize: 10 }}>{totalQuantity.toFixed(3)} Kgs.</Text>
-              <Text style={{ fontWeight: "bold", fontSize: 12, width: "11%", textAlign: "right" }}>{totalAmt.toFixed(2)}</Text>
+              <Text style={{ fontWeight: "bold", fontSize: 12, width: hideDiscount ? "18%" : "11%", textAlign: "right" }}>{totalAmt.toFixed(2)}</Text>
             </View>
 
             {/* Tax + Footer */}
