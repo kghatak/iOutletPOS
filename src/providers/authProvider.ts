@@ -281,7 +281,7 @@ export const authProvider: AuthProvider = {
     }
 
     // Dev login bypass - allows testing without backend auth
-    if (phone === DEV_PHONE && pwd === DEV_PASSWORD) {
+    if (import.meta.env.DEV && phone === DEV_PHONE && pwd === DEV_PASSWORD) {
       const devSession: Session = {
         phoneNumber: DEV_PHONE,
         name: "Dev User",
