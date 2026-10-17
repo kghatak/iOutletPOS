@@ -12,6 +12,8 @@ import routerProvider, {
   DocumentTitleHandler,
 } from "@refinedev/react-router";
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router";
+import { FeatureGuard } from "./access/FeatureGuard";
+import { POS_FEATURE, useTenantFeatures } from "./access/tenantFeatures";
 import StorefrontOutlinedIcon from "@mui/icons-material/StorefrontOutlined";
 import PointOfSaleOutlinedIcon from "@mui/icons-material/PointOfSaleOutlined";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
@@ -151,6 +153,11 @@ const RESOURCES = [
 ];
 
 function App() {
+  const tenantFeatures = useTenantFeatures();
+  const resources = RESOURCES.filter((resource) => {
+    const feature = POS_FEATURE[resource.name];
+    return !tenantFeatures || !feature || tenantFeatures.includes(feature);
+  });
 
   return (    <BrowserRouter>
       <ThemeProvider theme={appTheme}>
@@ -164,7 +171,7 @@ function App() {
                 dataProvider={dataProvider}
                 authProvider={authProvider}
                 notificationProvider={useNotificationProvider}
-                resources={RESOURCES}
+                resources={resources}
                 options={{
                   syncWithLocation: true,
                   warnWhenUnsavedChanges: true,
@@ -213,7 +220,9 @@ function App() {
                           )}
                         >
                           <Box sx={{ p: { xs: 1, sm: 2 } }}>
-                            <Outlet />
+                            <FeatureGuard features={tenantFeatures}>
+                              <Outlet />
+                            </FeatureGuard>
                           </Box>
                         </ThemedLayout>
                       </Authenticated>

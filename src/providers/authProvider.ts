@@ -23,6 +23,8 @@ type Session = {
   tenantId?: string;
   userId?: string;
   userProfile?: string;
+  /** Feature keys this tenant may open. Missing means not loaded yet. */
+  features?: string[];
   /** Bearer / JWT when the API returns one; optional if auth is cookie-only. */
   token?: string;
 };
@@ -58,6 +60,33 @@ export function getSessionUserProfile(): string | undefined {
 
 export function isOutletStorekeeper(): boolean {
   return getSessionUserProfile() === OUTLET_STOREKEEPER_PROFILE;
+}
+
+export function getSessionTenantId(): string {
+  try {
+    return readSession()?.tenantId?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+export function getSessionFeatures(): string[] | null {
+  try {
+    const features = readSession()?.features;
+    return Array.isArray(features) ? features.filter((key) => typeof key === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSessionFeatures(features: string[]) {
+  try {
+    const session = readSession();
+    if (!session) return;
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ ...session, features }));
+  } catch {
+    /* ignore broken session */
+  }
 }
 
 export function getSessionCashierName(): string | undefined {
@@ -189,6 +218,9 @@ function pickSessionFields(
   const email = typeof data.email === "string" ? data.email : undefined;
   const userProfile =
     typeof data.userProfile === "string" ? data.userProfile : undefined;
+  const features = Array.isArray(data.features)
+    ? data.features.filter((key): key is string => typeof key === "string")
+    : undefined;
 
   return {
     phoneNumber,
@@ -202,6 +234,7 @@ function pickSessionFields(
     tenantId,
     userId,
     userProfile,
+    features,
   };
 }
 
