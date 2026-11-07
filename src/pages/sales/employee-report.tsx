@@ -28,7 +28,7 @@ import {
 } from "../../types/sale";
 import { isSplitPaymentMode, type SalePaymentSplit } from "../../types/payment";
 
-const SALES_LIST_CAP = 2000;
+const SALES_LIST_CAP = 500;
 const MAX_RANGE_DAYS = 7;
 const MAX_GAP_DAYS = MAX_RANGE_DAYS - 1;
 

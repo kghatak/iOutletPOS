@@ -14,7 +14,7 @@ import {
   itemSummaryRowsFromSaleRecords,
 } from "../../types/sale";
 
-const SALES_LIST_CAP = 2000;
+const SALES_LIST_CAP = 500;
 
 /** Max inclusive calendar days From→To */
 const MAX_RANGE_DAYS = 7;
