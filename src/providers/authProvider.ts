@@ -113,6 +113,14 @@ export function getApiHeaders(
   if (tenant) {
     headers[API_TENANT_HEADER] = tenant;
   }
+  const userId = (session?.userId || session?.id || "").trim();
+  if (/^[A-Za-z0-9_.:-]{1,64}$/.test(userId) && !/^\d{10,}$/.test(userId)) {
+    headers["X-User-Id"] = userId;
+  }
+  headers["X-Client"] = "pos";
+  if (typeof window !== "undefined") {
+    headers["X-Page"] = window.location.pathname || "";
+  }
   if (extra) {
     Object.assign(headers, extra);
   }
