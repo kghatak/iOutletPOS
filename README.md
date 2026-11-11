@@ -36,7 +36,7 @@
 npm create refine-app@latest -- --example tutorial-material-ui
 ```
 
-## Try this example on CodeSandbox
+## Try this example on CodeSandbox.
 
 <br/>
 
