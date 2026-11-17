@@ -1,10 +1,10 @@
 {
-  "short_name": "Nannu Milk",
-  "name": "Nannu Milk — Outlet portal",
+  "short_name": "Outlet",
+  "name": "Outlet portal",
   "icons": [
     {
-      "src": "nannu-milk-icon.png",
-      "sizes": "512x512",
+      "src": "signin-logo.png",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any maskable"
     },
