@@ -15,6 +15,7 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import { brandIconSrc, brandLabel, useTenantBrand } from "../../brand/useTenantBrand";
 
 type LoginValues = {
   phoneNumber: string;
@@ -26,6 +27,8 @@ export const LoginPage = () => {
   const notification = useNotification();
   const { data, isPending: authCheckPending } = useIsAuthenticated();
   const { mutate: login, isPending: loginPending } = useLogin<LoginValues>();
+  const brand = useTenantBrand();
+  const brandName = brandLabel(brand);
 
   const {
     register,
@@ -77,18 +80,19 @@ export const LoginPage = () => {
             >
               <Box
                 component="img"
-                src="/nannu-milk-icon.png"
-                alt=""
+                src={brandIconSrc()}
+                alt={brandName || "Tenant"}
                 sx={{
                   width: 44,
                   height: 44,
                   objectFit: "contain",
-                  borderRadius: 1,
                 }}
               />
-              <Typography variant="h6" component="p" fontWeight={700}>
-                Nannu Milk
-              </Typography>
+              {brandName ? (
+                <Typography variant="h6" component="p" fontWeight={700}>
+                  {brandName}
+                </Typography>
+              ) : null}
             </Stack>
             <Typography variant="h5" component="h1" gutterBottom>
               Outlet sign in
