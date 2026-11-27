@@ -16,7 +16,8 @@ const EMPTY: TenantBrand = { business: "", name: "" };
 type Cached = { tenantId: string; brand: TenantBrand };
 
 let memory: Cached | null = null;
-let requestSeq = 0;
+let inflight: Promise<void> | null = null;
+let inflightTenant = "";
 const listeners = new Set<() => void>();
 
 export function brandLabel(brand: TenantBrand): string {
@@ -107,25 +108,39 @@ function notify() {
 
 async function refreshBrand() {
   const tenantId = sessionTenantId();
-  const seq = ++requestSeq;
   if (!tenantId) {
-    if (seq === requestSeq) notify();
+    notify();
     return;
   }
-  try {
-    const response = await fetch(`${API_BASE_URL}/tenant-brand`, {
-      headers: { Accept: "application/json", [API_TENANT_HEADER]: tenantId },
-    });
-    if (seq !== requestSeq || !response.ok) return;
-    const payload = (await response.json()) as { data?: unknown };
-    const brand = parseBrand(payload?.data);
-    if (!brand || seq !== requestSeq) return;
-    memory = { tenantId, brand };
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ tenantId, ...brand }));
+  if (memory?.tenantId === tenantId) return;
+  const cached = readCache();
+  if (cached?.tenantId === tenantId) {
+    memory = cached;
     notify();
-  } catch {
-    /* keep the last brand */
+    return;
   }
+  if (inflight && inflightTenant === tenantId) return inflight;
+
+  inflightTenant = tenantId;
+  inflight = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/tenant-brand`, {
+        headers: { Accept: "application/json", [API_TENANT_HEADER]: tenantId },
+      });
+      if (!response.ok) return;
+      const payload = (await response.json()) as { data?: unknown };
+      const brand = parseBrand(payload?.data);
+      if (!brand) return;
+      memory = { tenantId, brand };
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ tenantId, ...brand }));
+      notify();
+    } catch {
+      /* keep the last brand */
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
 export function useTenantBrand(): TenantBrand {
@@ -139,13 +154,11 @@ export function useTenantBrand(): TenantBrand {
     };
     window.addEventListener(AUTH_UPDATED_EVENT, onChange);
     window.addEventListener(SESSION_END_EVENT, onChange);
-    window.addEventListener("focus", onChange);
     onChange();
     return () => {
       listeners.delete(sync);
       window.removeEventListener(AUTH_UPDATED_EVENT, onChange);
       window.removeEventListener(SESSION_END_EVENT, onChange);
-      window.removeEventListener("focus", onChange);
     };
   }, []);
 
